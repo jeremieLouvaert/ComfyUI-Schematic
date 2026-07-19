@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-schematic"
+description = "Schematic/technical annotation overlay generator — detection circles, tangent chains, crosshair frames, and pixelation zones over any image"
+version = "0.1.0"
+license = { file = "LICENSE" }
+dependencies = ["Pillow>=9.0"]
+
+[project.urls]
+Repository = "https://github.com/jeremieLouvaert/ComfyUI-Schematic"
+
+[tool.comfy]
+PublisherId = "akurate"
+DisplayName = "ComfyUI Schematic"
+Icon = ""

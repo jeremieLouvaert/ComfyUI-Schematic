@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+*_api_key.txt
+output/
+*.egg-info/
+dist/
+build/
+test_data/
