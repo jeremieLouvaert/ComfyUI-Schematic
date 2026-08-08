@@ -2,7 +2,7 @@
 
 Turn any image into a technical/schematic annotation overlay, detection circles, tangent chains, crosshair frames, pixelation zones and all, in one node.
 
-![screenshot placeholder](docs/screenshot.png)
+![ComfyUI-Schematic](assets/hero.jpg)
 
 ## Features
 
