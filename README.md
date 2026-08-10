@@ -1,10 +1,10 @@
 # ComfyUI-Schematic
 
-Turn any image into a technical/schematic annotation overlay, detection circles, tangent chains, crosshair frames, pixelation zones and all, in one node.
+Turn any image into technical data-art. Two nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), and **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold.
 
 ![ComfyUI-Schematic](assets/hero.jpg)
 
-## Features
+## Schematic Overlay
 
 **Detection**
 - Four scoring modes: combined (contrast x brightness deviation), contrast, bright, dark
@@ -38,7 +38,19 @@ Turn any image into a technical/schematic annotation overlay, detection circles,
 **Sizes**
 - Match the input image, or crop-to-fill (cover) into five fixed presets: Portrait 3:4, Square, Landscape 16:9, Instagram Story, Poster
 
-## Outputs
+## Schematic Voronoi
+
+The photo becomes the density field of a Voronoi tessellation and the mesh becomes the image.
+
+- Three density sources: brightness (pair with the dark palettes), darkness (pair with blackOnLight so tonal values render right side up), and detail (outlines structure)
+- `cells` sets the tessellation site count (default 12000); `density_gamma` sets how hard the mesh follows the field
+- Ridge intensity is graded by cell size, so dense regions glow and sparse regions fade
+- Optional per-cell plate tone (`cell_fill`), seed dots, and a `mesh_weight` stroke multiplier
+- The photo itself sits underneath at a low default `image_opacity` (0.2); raise it for a hybrid look, drop it to 0 for pure mesh
+- Same palettes, seeded grain texture, frame text, and size presets as Schematic Overlay
+- Deterministic: the same seed always produces the same tessellation, every frame of a batch
+
+## Outputs (both nodes)
 
 - **image**: the full composite, background, photo, pixelation, crosshair, connections, circles, frame text, texture, and chain, all in order.
 - **overlay_only**: the same stack without the photo, so the vector layer can be composited elsewhere.
@@ -51,7 +63,7 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/jeremieLouvaert/ComfyUI-Schematic
 ```
 
-Restart ComfyUI. The node appears under **AKURATE/Schematic** as "Schematic Overlay".
+Restart ComfyUI. Both nodes appear under **AKURATE/Schematic**. Schematic Voronoi uses scipy, which ships with ComfyUI itself, so there is nothing extra to install.
 
 ## Inputs
 
@@ -60,6 +72,7 @@ Restart ComfyUI. The node appears under **AKURATE/Schematic** as "Schematic Over
 | `image` | IMAGE | required, source photo |
 | `pixelate_mask` | MASK | optional, each connected region's centroid becomes a pixelation zone |
 | `texture` | IMAGE | optional, screen-blended over the canvas; frame 0 is used for every frame in a batch |
+| `texture_mask` | MASK | optional (Schematic Overlay), limits where the texture blend applies; white is full effect, black is none |
 
 Key widgets (all carry tooltips in the node itself):
 

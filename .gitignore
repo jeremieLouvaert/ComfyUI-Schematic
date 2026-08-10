@@ -1,4 +1,6 @@
 __pycache__/
+_goldens/
+_eyeball/
 *.pyc
 *.pyo
 .env

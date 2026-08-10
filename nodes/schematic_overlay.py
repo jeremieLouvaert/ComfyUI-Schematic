@@ -236,6 +236,10 @@ class SchematicOverlay:
                     "tooltip": "Optional texture/noise image, screen-blended over the canvas. If empty "
                                "and texture_opacity > 0, a procedural grain fallback is used"
                 }),
+                "texture_mask": ("MASK", {
+                    "tooltip": "Continuous modulator for the texture screen blend; white = full texture, "
+                               "black = none; frame 0 used for batches"
+                }),
             },
         }
 
@@ -252,7 +256,7 @@ class SchematicOverlay:
                 crosshair_star_size, crosshair_star_points, pixel_size, zone_size, pixel_stroke,
                 image_opacity, texture_opacity, frame_text_size, frame_text_tl, frame_text_tr,
                 frame_text_bl, frame_text_br, palette, size_preset, bg_color, stroke_color,
-                pixelate_zones, pixelate_mask=None, texture=None):
+                pixelate_zones, pixelate_mask=None, texture=None, texture_mask=None):
 
         print(f"[Schematic] Schematic Overlay: mode={detection_mode}, block_size={block_size}, "
               f"palette={palette}, size_preset={size_preset}, seed={seed}")
@@ -276,6 +280,17 @@ class SchematicOverlay:
             if m.ndim == 3:
                 m = m[0]
             mask_bool = m > 0.5
+
+        texture_mask_np = None
+        if texture_mask is not None:
+            tm = texture_mask
+            if hasattr(tm, "cpu"):
+                tm = tm.cpu().numpy()
+            tm = np.asarray(tm, dtype=np.float32)
+            if tm.ndim == 3:
+                tm = tm[0]  # frame 0 used for all frames (spec section 12)
+            texture_mask_np = np.clip(tm, 0.0, 1.0)
+        texture_mask01 = None  # canvas-sized (h,w), resolved lazily on first frame (frames share canvas size)
 
         rparams = {
             "shape": shape, "circle_stroke": circle_stroke, "label_size": label_size,
@@ -346,10 +361,22 @@ class SchematicOverlay:
                 # generate once per frame; both render passes share identical grain
                 texture_canvas = engine.generate_grain(seed + 1, w, h)
 
+            if texture_mask_np is not None and texture_mask01 is None:
+                # lazy: canvas size (w,h) is only known here; all frames share it
+                if texture_mask_np.shape[0] == h and texture_mask_np.shape[1] == w:
+                    texture_mask01 = texture_mask_np
+                else:
+                    resampled = engine._bilinear_resample(
+                        texture_mask_np[..., None], 0.0, 0.0,
+                        float(texture_mask_np.shape[1]), float(texture_mask_np.shape[0]), w, h)
+                    texture_mask01 = np.clip(resampled[..., 0], 0.0, 1.0)
+
             img_out, alpha = render.render_frame(fitted, w, h, (bg_rgb, stroke_rgb), rparams,
-                                                  elements, texture_canvas, True, PACK_ROOT)
+                                                  elements, texture_canvas, True, PACK_ROOT,
+                                                  texture_mask01=texture_mask01)
             overlay_out, _ = render.render_frame(fitted, w, h, (bg_rgb, stroke_rgb), rparams,
-                                                  elements, texture_canvas, False, PACK_ROOT)
+                                                  elements, texture_canvas, False, PACK_ROOT,
+                                                  texture_mask01=texture_mask01)
 
             out_images.append(img_out.astype(np.float32) / 255.0)
             out_overlays.append(overlay_out.astype(np.float32) / 255.0)
