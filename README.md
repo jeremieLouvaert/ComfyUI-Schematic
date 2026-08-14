@@ -1,6 +1,6 @@
 # ComfyUI-Schematic
 
-Turn any image into technical data-art. Two nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), and **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold.
+Turn any image into technical data-art. Three nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), **Schematic Construction** lays a projective-geometry plate over it (two convergent ray pencils, concentric spheres, computed intersections and dense micrographic annotation), and **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold.
 
 ![ComfyUI-Schematic](assets/hero.jpg)
 
@@ -38,6 +38,20 @@ Turn any image into technical data-art. Two nodes, one visual family: **Schemati
 **Sizes**
 - Match the input image, or crop-to-fill (cover) into five fixed presets: Portrait 3:4, Square, Landscape 16:9, Instagram Story, Poster
 
+## Schematic Construction
+
+A projective-geometry plate drawn over the photograph, which is never altered outside a pixelation zone.
+
+- **Two foci**, each with a convergent ray pencil aimed through detected points and extended across the whole frame. Everything resolves to one of them, so density reads as structure rather than noise.
+- **Concentric spheres** about the primary focus, captioned with their radius and ray count
+- **Computed intersections** are the annotation engine: rays meeting spheres, including the genuine quadratic intersections where the second focus's rays cut the first focus's spheres. Every label sits on a point the geometry actually produced.
+- **Micrographic annotation** throughout: primed point labels, frame-exit labels giving each ray its index and true bearing, a graduated scale, leader callouts, and a running `IDX / ANG / REF` column keyed to the ray table
+- **Three weight classes** (datum, construct, fine) so the plate has a hierarchy instead of reading as an even web
+- **A label collision resolver** that drops any label it cannot place clearly, which thins annotation exactly where the geometry is densest
+- **Pixelation zones** use Overlay's own implementation, placed on computed intersections, with a random size range so patches vary
+- **Addressable elements**: every element can be disabled or nudged through the `elements` string, and each group has its own offset widgets. Offsets are normalised canvas fractions, so they survive a resolution change.
+- The seed chooses among valid layouts, not just content: foci, sphere radii, which gap carries the lune, and which intersections become zones
+
 ## Schematic Voronoi
 
 The photo becomes the density field of a Voronoi tessellation and the mesh becomes the image.
@@ -50,7 +64,7 @@ The photo becomes the density field of a Voronoi tessellation and the mesh becom
 - Same palettes, seeded grain texture, frame text, and size presets as Schematic Overlay
 - Deterministic: the same seed always produces the same tessellation, every frame of a batch
 
-## Outputs (both nodes)
+## Outputs (Overlay and Construction)
 
 - **image**: the full composite, background, photo, pixelation, crosshair, connections, circles, frame text, texture, and chain, all in order.
 - **overlay_only**: the same stack without the photo, so the vector layer can be composited elsewhere.
@@ -93,6 +107,8 @@ Key widgets (all carry tooltips in the node itself):
 
 ## Credits and clean-room note
 
-Inspired by Yordan Stoyanov's [Brand Assets Generator](https://brand-generator.stoyanov.works/), specifically its Circles mode. This node is a clean-room reimplementation from observed behavior, no source code was copied. Font bundled is Space Grotesk (OFL), not the original tool's typeface.
+Inspired by Yordan Stoyanov's [Brand Assets Generator](https://brand-generator.stoyanov.works/), specifically its Circles mode. This node is a clean-room reimplementation from observed behavior, no source code was copied. Font bundled is Space Grotesk (OFL), not the original tool's typeface. That credit is scoped to Schematic Overlay.
+
+Schematic Construction's apparatus is Euclid-era projective construction and Kepler-era diagram technique, both generic and unencumbered, implemented from its own derivation document. It bundles JetBrains Mono (OFL).
 
 MIT license, see `LICENSE`.
