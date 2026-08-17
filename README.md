@@ -38,6 +38,8 @@ Turn any image into technical data-art. Three nodes, one visual family: **Schema
 **Sizes**
 - Match the input image, or crop-to-fill (cover) into five fixed presets: Portrait 3:4, Square, Landscape 16:9, Instagram Story, Poster
 
+![Schematic Overlay output](assets/overlay-example.jpg)
+
 ## Schematic Construction
 
 A projective-geometry plate drawn over the photograph, which is never altered outside a pixelation zone.
