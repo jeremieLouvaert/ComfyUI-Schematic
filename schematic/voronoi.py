@@ -63,38 +63,65 @@ def _local_std_box(luma01, k):
 # 2. Density field (spec section 2)
 # ---------------------------------------------------------------------------
 
-def build_density(fitted01, source, gamma):
+def build_density(fitted01, source, gamma, mask01=None, mask_min=0.0):
     """
     fitted01: (H,W,3) float array, 0-1 (the cover-fitted source, same array
     that feeds the render). source: "brightness" | "darkness" | "detail".
     Returns (H,W) float64 density d(x,y) = normalized_field ** gamma, in [0,1].
     Spec section 2.
+
+    mask01 (optional, docs/voronoi-density-mask-derivation.md sections 1-2):
+    when given (canvas-sized (H,W) float array, already prepped/cover-fitted
+    by the caller), it REPLACES `source` as the field entirely -- density_source
+    becomes inert. `mask01 is None` is the UNTOUCHED banked behavior below
+    (structured so identity holds by construction -- the byteident harness
+    guards it). `mask_min` (active only when mask01 is given, section 2):
+    d_eff = mask_min + (1 - mask_min) * d, applied AFTER normalise+gamma;
+    mask_min == 0.0 skips the op structurally (bitwise == the unfloored chain).
     """
-    img255 = np.asarray(fitted01, dtype=np.float64) * 255.0
-    luma = 0.299 * img255[..., 0] + 0.587 * img255[..., 1] + 0.114 * img255[..., 2]
-    luma01 = luma / 255.0
+    if mask01 is None:
+        img255 = np.asarray(fitted01, dtype=np.float64) * 255.0
+        luma = 0.299 * img255[..., 0] + 0.587 * img255[..., 1] + 0.114 * img255[..., 2]
+        luma01 = luma / 255.0
 
-    if source == "brightness":
-        field = luma01
-    elif source == "darkness":
-        field = 1.0 - luma01
-    elif source == "detail":
-        h, w = luma01.shape
-        s = min(w, h)
-        k = _odd(max(3, round(0.006 * s)))
-        field = _local_std_box(luma01, k)
-    else:
-        raise ValueError(f"unknown density_source: {source!r}")
+        if source == "brightness":
+            field = luma01
+        elif source == "darkness":
+            field = 1.0 - luma01
+        elif source == "detail":
+            h, w = luma01.shape
+            s = min(w, h)
+            k = _odd(max(3, round(0.006 * s)))
+            field = _local_std_box(luma01, k)
+        else:
+            raise ValueError(f"unknown density_source: {source!r}")
 
+        fmax = float(field.max()) if field.size else 0.0
+        if fmax < 1e-9:
+            # guard: max < 1e-9 -> all-zero field (spec section 3 degenerate trigger)
+            normalized = np.zeros_like(field, dtype=np.float64)
+        else:
+            normalized = field / fmax
+
+        density = np.power(np.clip(normalized, 0.0, 1.0), gamma)
+        return density.astype(np.float64)
+
+    # Mask branch (section 1): field = clip(mask01, 0, 1) REPLACES the source
+    # field, then the EXISTING normalise (fmax < 1e-9 guard) + gamma tail --
+    # same arithmetic as the None-path above, applied to the mask instead of
+    # the photo's luma/detail field.
+    field = np.clip(np.asarray(mask01, dtype=np.float64), 0.0, 1.0)
     fmax = float(field.max()) if field.size else 0.0
     if fmax < 1e-9:
-        # guard: max < 1e-9 -> all-zero field (spec section 3 degenerate trigger)
         normalized = np.zeros_like(field, dtype=np.float64)
     else:
         normalized = field / fmax
 
-    density = np.power(np.clip(normalized, 0.0, 1.0), gamma)
-    return density.astype(np.float64)
+    density = np.power(np.clip(normalized, 0.0, 1.0), gamma).astype(np.float64)
+    if mask_min != 0.0:
+        # section 2 floor, gamma-then-floor op order (V13): d_eff = mask_min + (1-mask_min)*d
+        density = mask_min + (1.0 - mask_min) * density
+    return density
 
 
 # ---------------------------------------------------------------------------

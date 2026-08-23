@@ -5,8 +5,9 @@ Density-driven Voronoi tessellation over the photo's own field: seed density
 follows brightness/darkness/detail, cells draw as a fine wireframe mesh graded
 by cell size (small/dense cells read brighter). See
 docs/schematic-voronoi-derivation.md for the frozen behavioral spec this
-implements. torch only lives in this file (the tensor bridge);
-schematic/voronoi.py and schematic/render_voronoi.py stay torch-free.
+implements, and docs/voronoi-density-mask-derivation.md for the optional
+density_mask + mask_min amendment. torch only lives in this file (the tensor
+bridge); schematic/voronoi.py and schematic/render_voronoi.py stay torch-free.
 schematic/voronoi.py additionally stays scipy-free at import time (scipy.spatial
 is lazy-imported inside build_cells) so this node still loads if scipy is
 ever missing; only calling execute() with >=4 accepted seeds touches scipy.
@@ -44,6 +45,55 @@ def mask_batch_to_tensor(arrays):
     return torch.from_numpy(stacked)
 
 
+def _prep_density_mask(dm):
+    """
+    Node-level density_mask prep, docs/voronoi-density-mask-derivation.md
+    section 4 (v2): squeeze ALL trailing size-1 dims -> reshape((-1,)+shape[-2:])
+    -> empty-batch guard -> frame 0 (+ console note) -> nan_to_num -> the
+    >=8-both-dims plausibility guard -> clip [0,1], float64. Ported verbatim
+    from the certified prototype (_density_mask_dryrun/dryrun.py:prep_mask).
+
+    Returns (H,W) float64 in the mask's OWN resolution (not yet canvas-mapped
+    -- see _canvas_density_mask), or None (treated absent; absent is silent,
+    matches the None-default path).
+    """
+    if dm is None:
+        return None
+    if hasattr(dm, "cpu"):
+        dm = dm.cpu().numpy()
+    dm = np.asarray(dm, dtype=np.float32)
+    while dm.ndim > 2 and dm.shape[-1] == 1:
+        dm = dm[..., 0]
+    if dm.ndim < 2:
+        print("[Schematic] density_mask has no 2-D content, treating as absent")
+        return None
+    dm = dm.reshape((-1,) + dm.shape[-2:])
+    if dm.shape[0] == 0:
+        print("[Schematic] empty density_mask batch, treating as absent")
+        return None
+    if dm.shape[0] > 1:
+        print(f"[Schematic] density_mask batch {dm.shape[0]} frames, using frame 0")
+    m = np.nan_to_num(dm[0], nan=0.0)
+    if m.shape[0] < 8 or m.shape[1] < 8:
+        print(f"[Schematic] density_mask resolves to {m.shape} which is not a "
+              "plausible mask, treating as absent")
+        return None
+    return np.clip(m.astype(np.float64), 0.0, 1.0)
+
+
+def _canvas_density_mask(m, w, h):
+    """
+    Canvas geometry, section 3: mask dims == canvas (w,h) exactly -> used
+    AS-IS (no resample); otherwise engine.cover_fit, the SAME transform the
+    photo itself goes through (mask lifted to (H,W,1)->3-channel for the
+    call, channel 0 taken back out, clipped [0,1]).
+    """
+    if m.shape[0] == h and m.shape[1] == w:
+        return m
+    fitted = engine.cover_fit(np.repeat(m[..., None], 3, axis=2).astype(np.float32), w, h)
+    return np.clip(fitted[..., 0].astype(np.float64), 0.0, 1.0)
+
+
 SIZE_PRESETS = {
     "match input": None,
     "Portrait 3:4 (1200x1600)": (1200, 1600),
@@ -55,7 +105,8 @@ SIZE_PRESETS = {
 
 
 class SchematicVoronoi:
-    """Density-following Voronoi mesh overlay. See docs/schematic-voronoi-derivation.md."""
+    """Density-following Voronoi mesh overlay. See docs/schematic-voronoi-derivation.md
+    and docs/voronoi-density-mask-derivation.md (optional density_mask + mask_min)."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -95,7 +146,8 @@ class SchematicVoronoi:
                 "cell_fill": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 0.5, "step": 0.05,
                     "tooltip": "Optional flat fill under each cell's wireframe, brightness-scaled by that "
-                               "cell's own field value (plate-tone under the wirework). 0 disables."
+                               "cell's own field value (the mask's value when density_mask is wired - flat "
+                               "under a binary mask; plate-tone under the wirework). 0 disables."
                 }),
                 "seed_dots": ("BOOLEAN", {
                     "default": False,
@@ -159,6 +211,24 @@ class SchematicVoronoi:
                     "tooltip": "Optional texture/noise image, screen-blended over the canvas. If empty "
                                "and texture_opacity > 0, a procedural grain fallback is used"
                 }),
+                "density_mask": ("MASK", {
+                    "tooltip": "Optional mask that DRIVES SEED DENSITY, replacing density_source "
+                               "entirely: white = fine/dense cells, black = coarse. density_gamma "
+                               "still applies. Only the mask's relative structure matters (it is "
+                               "re-normalised to its own maximum: a uniform grey mask equals a white "
+                               "one). At mask_min 0 black zones can render with NO ridges crossing "
+                               "them - raise mask_min to keep a sparse mesh everywhere. Cover-fitted "
+                               "like the photo when sizes differ; frame 0 used for batches (all frames "
+                               "then share one tessellation); an empty or non-mask-shaped input is "
+                               "ignored with a console note."
+                }),
+                "mask_min": ("FLOAT", {
+                    "default": 0.01, "min": 0.0, "max": 1.0, "step": 0.005,
+                    "tooltip": "Minimum seed density where density_mask is black, as a fraction of "
+                               "the maximum. 0 = the mask alone decides (black can go empty); default "
+                               "0.01 keeps a sparse coarse mesh everywhere. Only active when "
+                               "density_mask is wired."
+                }),
             },
         }
 
@@ -170,7 +240,8 @@ class SchematicVoronoi:
     def execute(self, image, density_source, cells, density_gamma, seed, mesh_weight,
                 cell_fill, seed_dots, overlay_opacity, image_opacity, texture_opacity,
                 frame_text_size, frame_text_tl, frame_text_tr, frame_text_bl, frame_text_br,
-                palette, bg_color, stroke_color, size_preset, texture=None):
+                palette, bg_color, stroke_color, size_preset, texture=None,
+                density_mask=None, mask_min=0.01):
 
         print(f"[Schematic] Schematic Voronoi: source={density_source}, cells={cells}, "
               f"gamma={density_gamma}, palette={palette}, size_preset={size_preset}, seed={seed}")
@@ -184,6 +255,13 @@ class SchematicVoronoi:
             tex_frames = tensor_to_numpy_batch(texture)
             if tex_frames:
                 texture_np = tex_frames[0]  # frame 0 used for all frames
+
+        # density_mask prep (docs/voronoi-density-mask-derivation.md section 4):
+        # once per execute, frame 0 of the mask batch -- independent of the
+        # image batch loop below (section 5: one tessellation shared by every
+        # image frame when a mask is wired). density_mask=None keeps this a
+        # no-op with zero console output (the byte-identical absent path).
+        mask01 = _prep_density_mask(density_mask)
 
         rparams = {
             "cell_fill": cell_fill, "seed_dots": seed_dots, "mesh_weight": mesh_weight,
@@ -218,9 +296,22 @@ class SchematicVoronoi:
 
             fitted = engine.cover_fit(frame, w, h)
 
-            density = voronoi.build_density(fitted, density_source, density_gamma)
+            if mask01 is None:
+                density = voronoi.build_density(fitted, density_source, density_gamma)
+            else:
+                canvas_mask = _canvas_density_mask(mask01, w, h)
+                density = voronoi.build_density(fitted, density_source, density_gamma,
+                                                 mask01=canvas_mask, mask_min=mask_min)
             seeds = voronoi.sample_seeds(density, cells, seed, w, h)
             n = seeds.shape[0]
+
+            if mask01 is not None:
+                if float(density.max()) <= 0.0:
+                    print("[Schematic] density_mask is entirely zero: no seeds can accept "
+                          "(an alpha-less LoadImage mask does this)")
+                elif n < cells:
+                    print(f"[Schematic] density_mask: only {n}/{cells} seeds accepted "
+                          "(budget exhausted) - a sparse mask can leave the mesh coarser than requested")
 
             if n < 4:
                 # Degenerate path (spec section 3): SKIP the tessellation entirely,

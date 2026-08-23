@@ -11,6 +11,15 @@ stored in _goldens/ (gitignored), captured on pre-change HEAD, re-checked after 
 touch this phase. Configs G1-G6 cover: defaults, chain-heavy, pixelate zones with
 crosshair off, custom palette + square + procedural grain, batch + size preset,
 blackOnLight with connections/star/texture disabled.
+
+EXTENSION (docs/voronoi-density-mask-derivation.md, invariant V1): adds the
+SchematicVoronoi density_mask absent-path golden check (4 configs VG1-VG4,
+reproduced verbatim from _density_mask_dryrun/dryrun.py, asserted against the
+pre-change baseline _goldens/voronoi_mask_baseline.json -- NEVER re-captured
+by this script) plus ONE mask-wired golden (VG5), which IS captured on
+--capture and re-checked on --check (it pins the mask path against future
+refactors, not against this build). The 6 original Overlay configs (G1-G6)
+are untouched and never weakened.
 """
 
 import argparse
@@ -41,9 +50,11 @@ for sub in ("schematic", "nodes"):
     spec.loader.exec_module(m)
 
 SchematicOverlay = sys.modules["cs_pkg.nodes"].NODE_CLASS_MAPPINGS["SchematicOverlay"]
+SchematicVoronoi = sys.modules["cs_pkg.nodes"].NODE_CLASS_MAPPINGS["SchematicVoronoi"]
 
 GOLDEN_DIR = os.path.join(PACK, "_goldens")
 GOLDEN_PATH = os.path.join(GOLDEN_DIR, "schematic_v01.json")
+VORONOI_GOLDEN_PATH = os.path.join(GOLDEN_DIR, "voronoi_mask_baseline.json")
 
 DEFAULTS = {
     "detection_mode": "combined", "block_size": 16, "threshold": 30,
@@ -114,6 +125,132 @@ def run_config(node, cfg):
     return hashes
 
 
+# ===========================================================================
+# Voronoi density_mask extension (docs/voronoi-density-mask-derivation.md, V1)
+# ===========================================================================
+
+# Reproduced VERBATIM from _density_mask_dryrun/dryrun.py -- do not drift.
+V_DEFAULTS = dict(density_source="brightness", cells=12000, density_gamma=2.5,
+                  seed=42, mesh_weight=1.0, cell_fill=0.0, seed_dots=False,
+                  overlay_opacity=1.0, image_opacity=0.2, texture_opacity=0.5,
+                  frame_text_size=12, frame_text_tl="Design & Strategy",
+                  frame_text_tr="AKURATE", frame_text_bl="", frame_text_br="",
+                  palette="whiteOnDark", bg_color="#0a0a0a",
+                  stroke_color="#d8d8d8", size_preset="match input")
+
+V_CONFIGS = {
+    "VG1_defaults": {"frames": [(642, 480, 21)], "params": {}},
+    "VG2_darkness_light": {"frames": [(642, 480, 22)],
+                           "params": {"density_source": "darkness",
+                                      "palette": "blackOnLight", "cells": 4000}},
+    "VG3_detail_gold_fill": {"frames": [(642, 480, 23)],
+                             "params": {"density_source": "detail", "palette": "goldOnDark",
+                                        "cell_fill": 0.3, "seed_dots": True}},
+    "VG4_batch_story": {"frames": [(640, 640, 24), (640, 640, 25)],
+                        "params": {"size_preset": "Instagram Story (1080x1920)",
+                                   "image_opacity": 0.5}},
+}
+# These 4 configs assert ONLY against the pre-change baseline captured into
+# _goldens/voronoi_mask_baseline.json (_density_mask_dryrun/dryrun.py) and are
+# executed WITHOUT any density_mask/mask_min kwargs, so the python defaults on
+# the built node's execute() are exercised (density_mask=None path). Never
+# re-captured here -- a --capture run touches only VG5 below.
+
+VG5_SEED = 23  # VG3_detail_gold_fill's frame seed, reused as the deterministic key
+VG5_NAME = "VG5_masked_detail_gold_story"
+VG5_CONFIG = {
+    "frames": [(642, 480, VG5_SEED)],
+    "params": {**V_CONFIGS["VG3_detail_gold_fill"]["params"],
+               "size_preset": "Instagram Story (1080x1920)"},  # aspect-mismatched vs the 642x480 frame
+}
+
+
+def voronoi_two_axis_mask(w, h, seed):
+    """Fixed deterministic two-axis (function of BOTH x and y) synthetic mask
+    for VG5, keyed off the V_CONFIGS seed (VG3 uses seed 23). Pure arithmetic
+    (no trig) so the golden hash is exactly reproducible run to run."""
+    rng = np.random.default_rng(seed)
+    ax = float(rng.uniform(0.3, 1.0))
+    ay = float(rng.uniform(0.3, 1.0))
+    xs = (np.arange(w, dtype=np.float32) + 0.5) / w
+    ys = (np.arange(h, dtype=np.float32) + 0.5) / h
+    mask = (ax * xs[None, :] + ay * ys[:, None]) / (ax + ay)
+    return np.clip(mask, 0.0, 1.0).astype(np.float32)
+
+
+def run_voronoi_config(node, cfg, mask=None):
+    frames = [synth_image(w, h, s) for (w, h, s) in cfg["frames"]]
+    img = torch.from_numpy(np.stack(frames, axis=0))
+    params = dict(V_DEFAULTS)
+    params.update(cfg["params"])
+    kwargs = dict(image=img, texture=None, **params)
+    if mask is not None:
+        kwargs["density_mask"] = torch.from_numpy(mask)[None, ...]  # (1,H,W)
+    outs = node.execute(**kwargs)
+    hashes = {}
+    for name, t in zip(("image", "overlay_only", "overlay_alpha"), outs):
+        arr = np.ascontiguousarray(t.cpu().numpy().astype(np.float32))
+        hashes[name] = hashlib.md5(arr.tobytes()).hexdigest()
+    return hashes
+
+
+def run_voronoi_suite(mode):
+    """V1: the 4 absent-path configs are ALWAYS checked (never captured)
+    against the frozen pre-change baseline; VG5 is the one mask-wired golden,
+    captured on --capture and re-checked on --check. Returns True iff every
+    row that was checked passed (a bare --capture of VG5 doesn't fail here)."""
+    node = SchematicVoronoi()
+    ok = True
+
+    if not os.path.exists(VORONOI_GOLDEN_PATH):
+        print(f"FAIL: no Voronoi baseline at {VORONOI_GOLDEN_PATH}")
+        return False
+    with open(VORONOI_GOLDEN_PATH) as f:
+        golden = json.load(f)
+
+    print("\n-- SchematicVoronoi density_mask absent-path (V1, vs pre-change baseline; never re-captured) --")
+    for name, cfg in V_CONFIGS.items():
+        t0 = time.time()
+        hashes = run_voronoi_config(node, cfg)
+        print(f"  [{name}] rendered in {time.time() - t0:.2f}s")
+        for out_name, h in hashes.items():
+            g = golden.get(name, {}).get(out_name)
+            match = (g == h)
+            if not match:
+                ok = False
+            print(f"  [{'PASS' if match else 'FAIL'}] {name}.{out_name}"
+                  + ("" if match else f"  golden={g} now={h}"))
+
+    print("\n-- SchematicVoronoi mask-wired golden (VG5, pins the mask path) --")
+    try:
+        mask = voronoi_two_axis_mask(642, 480, VG5_SEED)
+        t0 = time.time()
+        hashes_vg5 = run_voronoi_config(node, VG5_CONFIG, mask=mask)
+        print(f"  [{VG5_NAME}] rendered in {time.time() - t0:.2f}s")
+    except TypeError as e:
+        print(f"BUILD NOT READY: SchematicVoronoi.execute rejected density_mask ({e})")
+        return False
+
+    if mode == "capture":
+        golden[VG5_NAME] = hashes_vg5
+        with open(VORONOI_GOLDEN_PATH, "w") as f:
+            json.dump(golden, f, indent=1)
+        print(f"  CAPTURED {VG5_NAME} -> {VORONOI_GOLDEN_PATH}")
+    else:
+        g5 = golden.get(VG5_NAME)
+        if g5 is None:
+            print(f"  FAIL: {VG5_NAME} not yet captured -- run --capture on the built node first")
+            ok = False
+        else:
+            for out_name, h in hashes_vg5.items():
+                match = (g5.get(out_name) == h)
+                if not match:
+                    ok = False
+                print(f"  [{'PASS' if match else 'FAIL'}] {VG5_NAME}.{out_name}"
+                      + ("" if match else f"  golden={g5.get(out_name)} now={h}"))
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -128,29 +265,35 @@ def main():
         results[name] = run_config(node, cfg)
         print(f"  [{name}] rendered in {time.time() - t0:.2f}s")
 
+    overlay_exit = 0
     if args.capture:
         os.makedirs(GOLDEN_DIR, exist_ok=True)
         with open(GOLDEN_PATH, "w") as f:
             json.dump(results, f, indent=2)
         print(f"CAPTURED {len(results)} configs -> {GOLDEN_PATH}")
-        return 0
+    else:
+        if not os.path.exists(GOLDEN_PATH):
+            print(f"FAIL: no goldens at {GOLDEN_PATH}; run --capture on the baseline first")
+            return 1
+        with open(GOLDEN_PATH) as f:
+            golden = json.load(f)
+        ok = True
+        for name, hashes in results.items():
+            for out_name, h in hashes.items():
+                g = golden.get(name, {}).get(out_name)
+                match = (g == h)
+                if not match:
+                    ok = False
+                print(f"  [{'PASS' if match else 'FAIL'}] {name}.{out_name}"
+                      + ("" if match else f"  golden={g} now={h}"))
+        print("BYTE-IDENTITY (Overlay G1-G6) " + ("PASS" if ok else "FAIL"))
+        overlay_exit = 0 if ok else 1
 
-    if not os.path.exists(GOLDEN_PATH):
-        print(f"FAIL: no goldens at {GOLDEN_PATH}; run --capture on the baseline first")
-        return 1
-    with open(GOLDEN_PATH) as f:
-        golden = json.load(f)
-    ok = True
-    for name, hashes in results.items():
-        for out_name, h in hashes.items():
-            g = golden.get(name, {}).get(out_name)
-            match = (g == h)
-            if not match:
-                ok = False
-            print(f"  [{'PASS' if match else 'FAIL'}] {name}.{out_name}"
-                  + ("" if match else f"  golden={g} now={h}"))
-    print("BYTE-IDENTITY " + ("PASS" if ok else "FAIL"))
-    return 0 if ok else 1
+    voronoi_ok = run_voronoi_suite("capture" if args.capture else "check")
+    print("BYTE-IDENTITY (Voronoi mask V1) " + ("PASS" if voronoi_ok else "FAIL"))
+    voronoi_exit = 0 if voronoi_ok else 1
+
+    return overlay_exit or voronoi_exit
 
 
 if __name__ == "__main__":
