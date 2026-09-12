@@ -1,6 +1,6 @@
 # ComfyUI-Schematic
 
-Turn any image into technical data-art. Three nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), **Schematic Construction** lays a projective-geometry plate over it (two convergent ray pencils, concentric spheres, computed intersections and dense micrographic annotation), and **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold.
+Turn any image into technical data-art. Four nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), **Schematic Construction** lays a projective-geometry plate over it (two convergent ray pencils, concentric spheres, computed intersections and dense micrographic annotation), **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold, and **Schematic Topographic** draws a complete topographic map sheet over it from a procedural terrain (contours, index contours with elevation labels, hachures, spot heights, benchmarks, slope arrows, grid, marginalia).
 
 ![ComfyUI-Schematic](assets/hero.jpg)
 
@@ -66,6 +66,23 @@ The photo becomes the density field of a Voronoi tessellation and the mesh becom
 - Same palettes, seeded grain texture, frame text, and size presets as Schematic Overlay
 - Deterministic: the same seed always produces the same tessellation, every frame of a batch
 
+## Schematic Topographic
+
+A complete topographic map sheet drawn over the photo, every element with its own density, scale and weight controls. The terrain is a seeded procedural landform, so the sheet is an overlay in its own right; the photo is the ground under it.
+
+- Terrain: `terrain_scale`, `terrain_octaves`, `terrain_roughness`, and `terrain_stretch` / `terrain_angle` for flowing ridge-and-valley contours; `height_source` can also derive the terrain from the photo (brightness, darkness, detail) and an optional `height_mask` replaces it entirely
+- `contour_text` runs any text along the index contours (or every contour), glyph by glyph, following the line with the line broken under it; `label_unit` adds a suffix such as " m" to the elevation labels
+- `smoothing` (Gaussian sigma) sets how calm the terrain is; `elevation_min` / `elevation_max` map the field to metres; `contour_interval` is the contour density (0 to 1000 m at 40 m is 24 lines); every `index_every`-th contour is heavier (`index_weight`) and carries inline elevation labels rotated along the line, with the line broken under each label (`label_size`, `label_spacing`)
+- Hachures: short downhill ticks, on depression contours only (the map-sheet convention) or on every contour (`hachure_spacing`, `hachure_length`)
+- Slope arrows on a regular grid, pointing downhill, longer where steeper (`arrow_spacing`, `arrow_length`)
+- Spot heights at local peaks (triangle) and pits (circle) with their elevation; benchmarks (x cross, "BM" + elevation) at seeded positions kept clear of them (`spot_count`, `spot_min_distance`, `symbol_size`, `benchmark_count`)
+- Grid as full lines, edge ticks, ticks plus interior crosses, or dots, with coordinate labels in metres along the bottom and right edges from `map_scale` (`grid_spacing`, `grid_weight`)
+- Hypsometric `band_fill`: stepped plate tone between contours, stronger with elevation
+- Marginalia: north arrow, a 1-2-5 scale bar from `map_scale`, a "CONTOUR INTERVAL n M" note, one `marginalia_scale` multiplier; `annotations` takes custom call-outs as `x,y:TEXT;x,y:TEXT`
+- Overlay's pixelation zones (`pixelate_zones`, `pixelate_mask`, `pixel_size`, `zone_size`, `pixel_stroke`) to alter the photo underneath
+- Same palettes, seeded grain texture, four-corner frame text, size presets and three outputs as the siblings
+- Deterministic: the same seed always gives the same terrain and benchmarks, every frame of a batch
+
 ## Outputs (Overlay and Construction)
 
 - **image**: the full composite, background, photo, pixelation, crosshair, connections, circles, frame text, texture, and chain, all in order.
@@ -86,9 +103,11 @@ Restart ComfyUI. Both nodes appear under **AKURATE/Schematic**. Schematic Vorono
 | Input | Type | Notes |
 |---|---|---|
 | `image` | IMAGE | required, source photo |
-| `pixelate_mask` | MASK | optional, each connected region's centroid becomes a pixelation zone |
+| `pixelate_mask` | MASK | optional (Overlay, Construction, Topographic), each connected region's centroid becomes a pixelation zone |
 | `texture` | IMAGE | optional, screen-blended over the canvas; frame 0 is used for every frame in a batch |
 | `texture_mask` | MASK | optional (Schematic Overlay), limits where the texture blend applies; white is full effect, black is none |
+| `density_mask` | MASK | optional (Schematic Voronoi), drives seed density instead of the photo |
+| `height_mask` | MASK | optional (Schematic Topographic), used as the terrain height instead of the photo |
 
 Key widgets (all carry tooltips in the node itself):
 

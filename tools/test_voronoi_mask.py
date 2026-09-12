@@ -575,8 +575,13 @@ control("V10v2 a normalise-before-cover_fit ordering error is VISIBLE on the pea
 # ===========================================================================
 section("V11  pack sweep: loader node count + sibling suite stays green")
 mapping_names = set(sys.modules["cs_pkg.nodes"].NODE_CLASS_MAPPINGS.keys())
-check("V11 loader registers exactly 3 nodes (Overlay, Voronoi, Construction per spec section 6)",
-      len(mapping_names) == 3, f"names={sorted(mapping_names)}")
+# Spec section 6 pinned the loader at 3 nodes when this slice shipped (v0.5.0);
+# Schematic Topographic (v0.6.0, 2026-09-12) is the fourth. The row now pins
+# the three section-6 nodes by NAME and a floor of 3, so later siblings do not
+# break a mask-slice suite that never covered them.
+check("V11 loader registers the 3 spec-section-6 nodes (Overlay, Voronoi, Construction) - later siblings allowed",
+      {"SchematicOverlay", "SchematicVoronoi", "SchematicConstruction"} <= mapping_names and len(mapping_names) >= 3,
+      f"names={sorted(mapping_names)}")
 check("V11 SchematicOverlay and SchematicVoronoi both present",
       {"SchematicOverlay", "SchematicVoronoi"} <= mapping_names, f"names={sorted(mapping_names)}")
 
