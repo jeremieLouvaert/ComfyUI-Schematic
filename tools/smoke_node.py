@@ -37,7 +37,9 @@ for section in ("required", "optional"):
             defaults[k] = v[1]["default"]
         elif isinstance(v, tuple) and isinstance(v[0], list):
             defaults[k] = v[0][0]
-defaults.pop("image", None); defaults.pop("pixelate_mask", None); defaults.pop("texture", None)
+defaults.pop("image", None)
+defaults.pop("pixelate_mask", None)
+defaults.pop("texture", None)
 
 t0 = time.time()
 out_img, out_overlay, out_alpha = node.execute(image=img, pixelate_mask=mask, texture=None, **defaults)
@@ -57,7 +59,8 @@ assert torch.equal(out_img, out2)
 print("[PASS] node determinism: identical rerun")
 
 # size preset path
-defaults2 = dict(defaults); defaults2["size_preset"] = "Square (1080x1080)"
+defaults2 = dict(defaults)
+defaults2["size_preset"] = "Square (1080x1080)"
 o3 = node.execute(image=img[:1], pixelate_mask=None, texture=None, **defaults2)[0]
 assert o3.shape == (1, 1080, 1080, 3), o3.shape
 print("[PASS] size preset: 1080x1080 canvas from 768x512 input")

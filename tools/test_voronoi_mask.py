@@ -373,8 +373,10 @@ except IndexError:
     control("V6 the banked bare dm[0] on an (0,H,W) array raises IndexError", True,
             "IndexError (the guard is not optional)")
 
-mask_nan6 = base_mask6.copy(); mask_nan6[:10, :10] = np.nan
-mask_zeroed6 = base_mask6.copy(); mask_zeroed6[:10, :10] = 0.0
+mask_nan6 = base_mask6.copy()
+mask_nan6[:10, :10] = np.nan
+mask_zeroed6 = base_mask6.copy()
+mask_zeroed6[:10, :10] = 0.0
 r_nan6 = run6(torch.from_numpy(mask_nan6))
 r_zeroed6 = run6(torch.from_numpy(mask_zeroed6))
 check("V6 NaN-pixel mask == hand-zeroed mask (nan_to_num)", torch.equal(r_nan6[1], r_zeroed6[1]))
@@ -493,7 +495,8 @@ sa9, _ = seeds_for(g8, W0, H0, gamma=2.5, cells=3000, seed=42, fitted=PHOTO8)
 sb9, _ = seeds_for(g8, W0, H0, gamma=2.5, cells=3000, seed=42, fitted=PHOTO8)
 check("V9 same (photo, mask, seed) -> byte-identical seeds", np.array_equal(sa9, sb9))
 
-sparse9 = np.zeros((H0, W0), dtype=np.float32); sparse9[:, :max(1, W0 // 100)] = 1.0
+sparse9 = np.zeros((H0, W0), dtype=np.float32)
+sparse9[:, :max(1, W0 // 100)] = 1.0
 d_sp9 = density_for(sparse9, W0, H0, gamma=1.0, mask_min=0.0, fitted=FLAT0)
 s_sp9 = voronoi.sample_seeds(d_sp9, 3000, 42, W0, H0)
 mean_d9 = float(d_sp9.mean())
@@ -526,7 +529,8 @@ with contextlib.redirect_stdout(buf9b):
 check("V9 dense mask: NO budget-exhausted shortfall line", "budget exhausted" not in buf9b.getvalue(),
       f"captured={buf9b.getvalue()!r:.300}")
 
-five_pct9 = np.zeros((H0, W0), dtype=np.float32); five_pct9[:, :max(1, int(W0 * 0.05))] = 1.0
+five_pct9 = np.zeros((H0, W0), dtype=np.float32)
+five_pct9[:, :max(1, int(W0 * 0.05))] = 1.0
 d_5pct9 = density_for(five_pct9, W0, H0, gamma=1.0, mask_min=0.0, fitted=FLAT0)
 s_5pct9 = voronoi.sample_seeds(d_5pct9, 3000, 42, W0, H0)
 control("V9 a 5% mask (>1/80) does NOT fire the shortfall (reaches cells)",
@@ -536,7 +540,8 @@ control("V9 a 5% mask (>1/80) does NOT fire the shortfall (reaches cells)",
 # ===========================================================================
 section("V10  cover-fit geometry (peak-cropped witness + canvas-verbatim)")
 w10, h10 = 350, 500  # portrait canvas; source mask built at 320x240 landscape (aspect mismatch)
-blob10 = np.zeros((H0, W0), dtype=np.float32); blob10[:, W0 // 2 - 20:W0 // 2 + 20] = 1.0
+blob10 = np.zeros((H0, W0), dtype=np.float32)
+blob10[:, W0 // 2 - 20:W0 // 2 + 20] = 1.0
 fitted10 = np.zeros((h10, w10, 3), dtype=np.float32)
 
 s_cf10, _ = seeds_for(blob10, w10, h10, gamma=1.0, mask_min=0.0, fitted=fitted10)
@@ -560,7 +565,9 @@ control("V10 the banked stretch-resample geometry differs at aspect mismatch",
         not np.array_equal(s_cf10, s_st10), f"cf_n={len(s_cf10)} st_n={len(s_st10)}")
 
 # v2 peak-cropped witness: pins the canvas-map-THEN-normalise order
-peak10 = np.zeros((H0, W0), dtype=np.float32); peak10[:, :30] = 1.0; peak10[:, 30:] = 0.3
+peak10 = np.zeros((H0, W0), dtype=np.float32)
+peak10[:, :30] = 1.0
+peak10[:, 30:] = 0.3
 d_after10 = density_for(peak10, w10, h10, gamma=1.0, mask_min=0.0, fitted=fitted10)  # spec order
 
 m_pk_prep10 = prep_mask_arr(peak10)
@@ -649,13 +656,15 @@ p13.update(cells=12000, density_gamma=2.5, texture_opacity=0.0,
            frame_text_tl="", frame_text_tr="", frame_text_bl="", frame_text_br="",
            palette="whiteOnDark")
 
-p13_0 = dict(p13); p13_0["mask_min"] = 0.0
+p13_0 = dict(p13)
+p13_0["mask_min"] = 0.0
 a0_13 = to2d(NODE.execute(image=img13, texture=None, density_mask=mask13, **p13_0)[2][0].numpy())
 z0_13, _ = zero_ink_blocks(a0_13)
 control("V13 mask_min=0 leaves ink holes on the radial config (v1's spec-fatal)",
         z0_13 > 20.0, f"{z0_13:.1f}%")
 
-p13_1 = dict(p13); p13_1["mask_min"] = 0.01
+p13_1 = dict(p13)
+p13_1["mask_min"] = 0.01
 a1_13 = to2d(NODE.execute(image=img13, texture=None, density_mask=mask13, **p13_1)[2][0].numpy())
 z1_13, _ = zero_ink_blocks(a1_13)
 hot13 = radial13 > 0.5
