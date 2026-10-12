@@ -5,7 +5,8 @@ the precomputed `elements`; schematic/topographic.py owns the geometry, computed
 by the node). Implements docs/schematic-topographic-derivation.md section 6:
 bg -> image -> hypsometric band raster -> overlay-A (grid -> regular contours ->
 hachures -> index contours with label gaps -> index labels -> slope arrows ->
-spot heights -> benchmarks -> annotations -> marginalia -> frame text) ->
+spot heights -> benchmarks -> campsites -> annotations -> marginalia ->
+frame text) ->
 premultiplied resolve -> texture screen-blend -> (overlay-B slot: EMPTY,
 elided -- an empty layer is a bitwise no-op).
 
@@ -289,6 +290,71 @@ def _draw_benchmarks(draw, bms, stroke_rgb, op, params, font_dir):
                   fill=fill, anchor="lm")
 
 
+# CanvasCamp logo symbol, transcribed from CanvasCamp/_lib/_Gen/Logo/
+# Canvascamp001_LogoSymbol_ReDesign_Vector_Model_v001.svg (viewBox 0 0 1024 1024).
+# The SVG carries the mark only: the disc's centre and radius are measured off
+# the brand lockup in the same frame. The (R) is dropped (sub-pixel at map scale).
+_CC_DISC = (512.0, 526.1, 104.6)
+_CC_STRIPE = [(511.9, 481.2), (496.1, 497.0), (555.4, 556.3), (586.9, 556.3)]
+
+
+def _cubic(p0, p1, p2, p3, n=24):
+    out = []
+    for k in range(1, n + 1):
+        t = k / n
+        a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3
+        out.append((a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+                    a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]))
+    return out
+
+
+# left mark: M437,556.2 h4.3 c17.7,0,34.7-7,47.3-19.6 c12.5,12.5,29.5,19.6,47.3,19.6
+# h4.3 l-51.5-51.5 -51.5,51.5 Z (relative commands resolved to absolute)
+_CC_PEAK = ([(437.0, 556.2), (441.3, 556.2)]
+            + _cubic((441.3, 556.2), (459.0, 556.2), (476.0, 549.2), (488.6, 536.6))
+            + _cubic((488.6, 536.6), (501.1, 549.1), (518.1, 556.2), (535.9, 556.2))
+            + [(540.2, 556.2), (488.7, 504.7), (437.2, 556.2)])
+
+
+def _cc_unit(pts):
+    """SVG frame -> unit-disc frame (disc centre at 0, radius 1)."""
+    cx, cy, r = _CC_DISC
+    return [((x - cx) / r, (y - cy) / r) for (x, y) in pts]
+
+
+CC_MARK = (_cc_unit(_CC_PEAK), _cc_unit(_CC_STRIPE))
+
+
+def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
+    """CanvasCamp badge per site: stroke-colour disc, mark knocked out in the
+    background colour, thin background halo so contours never touch the disc.
+    Each badge is built opaque on its own tile and composited at `op`, so the
+    knockout stays clean at partial overlay_opacity."""
+    if not camps or op <= 0.0:
+        return
+    r = float(params["campsite_size"]) / 2.0 * SS
+    halo = max(1.0, float(params["contour_weight"])) * SS
+    R = r + halo
+    pad = int(math.ceil(R)) + 2
+    a_op = int(round(np.clip(op, 0.0, 1.0) * 255))
+    disc_fill = (int(stroke_rgb[0]), int(stroke_rgb[1]), int(stroke_rgb[2]), 255)
+    knock = (int(bg_rgb[0]), int(bg_rgb[1]), int(bg_rgb[2]), 255)
+    for (x, y) in camps:
+        X, Y = x * SS, y * SS
+        ox, oy = int(math.floor(X)) - pad, int(math.floor(Y)) - pad
+        cx, cy = X - ox, Y - oy
+        tile = Image.new("RGBA", (2 * pad + 1, 2 * pad + 1), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tile)
+        td.ellipse([cx - R, cy - R, cx + R, cy + R], fill=knock)
+        td.ellipse([cx - r, cy - r, cx + r, cy + r], fill=disc_fill)
+        for poly in CC_MARK:
+            td.polygon([(cx + u * r, cy + v * r) for (u, v) in poly], fill=knock)
+        if a_op < 255:
+            alpha = tile.getchannel("A").point(lambda a: (a * a_op + 127) // 255)
+            tile.putalpha(alpha)
+        layer.alpha_composite(tile, (ox, oy))
+
+
 def _draw_annotations(draw, w, notes, stroke_rgb, op, params, font_dir):
     if not notes:
         return
@@ -450,6 +516,7 @@ def render_frame_topographic(fitted01, w, h, palette, params, elements, texture0
         _draw_arrows(draw_a, elements["arrows"], stroke_rgb, op, params["contour_weight"])
         _draw_spots(draw_a, elements["spots"], stroke_rgb, op, params, font_dir)
         _draw_benchmarks(draw_a, elements["benchmarks"], stroke_rgb, op, params, font_dir)
+        _draw_campsites(layer_a, elements.get("campsites") or [], stroke_rgb, bg_rgb, op, params)
         _draw_annotations(draw_a, w, elements["annotations"], stroke_rgb, op, params, font_dir)
         if params["grid"] != "off" and params["grid_labels"]:
             _draw_grid_labels(layer_a, draw_a, w, h, xs, ys, stroke_rgb, op, params["label_size"],

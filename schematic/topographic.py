@@ -730,6 +730,47 @@ def benchmarks(seed, w, h, count, min_dist, spots, F, stride, elev_min, elev_max
 
 
 # ---------------------------------------------------------------------------
+# 5k. Campsites
+# ---------------------------------------------------------------------------
+
+def campsites(seed, w, h, count, min_dist, size, others, gx, gy, stride):
+    """Dispersed campsites, pitched on flat ground: own MINSTD stream
+    'campsites'; margin 0.08*min(w,h) + size/2; u then v; accepted iff the
+    slope |grad F| at the site is <= the field's median slope AND the site is
+    >= max(min_dist, size) from every point in `others` (spot heights,
+    benchmarks) and every accepted campsite; at most 80*count draws.
+    Returns list of (x, y)."""
+    if count <= 0 or size <= 0:
+        return []
+    mag = np.hypot(gx, gy)
+    if mag.size == 0:
+        return []
+    g_flat = float(np.median(mag))
+    rng = engine.MinstdLCG(element_seed(seed, "campsites"))
+    m = 0.08 * min(w, h) + size / 2.0
+    if w - 2 * m <= 0 or h - 2 * m <= 0:
+        return []
+    md2 = max(float(min_dist), float(size)) ** 2
+    pts = [(float(o[0]), float(o[1])) for o in others]
+    acc = []
+    for _ in range(80 * int(count)):
+        u = rng.draw()
+        v = rng.draw()
+        x = m + u * (w - 2 * m)
+        y = m + v * (h - 2 * m)
+        ex, ey = sample_grad(gx, gy, x, y, stride)
+        if math.hypot(ex, ey) > g_flat:
+            continue
+        if any((ox - x) ** 2 + (oy - y) ** 2 < md2 for (ox, oy) in pts):
+            continue
+        acc.append((float(x), float(y)))
+        pts.append((float(x), float(y)))
+        if len(acc) >= count:
+            break
+    return acc
+
+
+# ---------------------------------------------------------------------------
 # 5g. Grid, 5i. Scale bar, 5j. Annotations, 5h. Bands
 # ---------------------------------------------------------------------------
 

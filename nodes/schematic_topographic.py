@@ -3,7 +3,8 @@ Schematic Topographic node for ComfyUI-Schematic.
 
 The photo's smoothed luma is the terrain; the node draws a complete topographic
 map sheet over it: contour lines, index contours with inline elevation labels,
-depression hachures, spot heights, benchmarks, slope arrows, grid with edge
+depression hachures, spot heights, benchmarks, CanvasCamp campsite badges,
+slope arrows, grid with edge
 coordinates, hypsometric band tone, north arrow, scale bar, contour-interval
 note and user annotations. See docs/schematic-topographic-derivation.md for
 the frozen spec. torch only lives in this file (the tensor bridge);
@@ -382,6 +383,21 @@ class SchematicTopographic:
                                "(white = high). Smoothing still applies. Cover-fitted like the photo "
                                "when sizes differ; frame 0 used for batches."
                 }),
+                "campsites": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Scatter CanvasCamp campsite badges over the sheet, pitched on flat "
+                               "ground (the flatter half of the terrain), clear of spot heights and "
+                               "benchmarks."
+                }),
+                "campsite_count": ("INT", {
+                    "default": 6, "min": 0, "max": 60, "step": 1,
+                    "tooltip": "Maximum campsites; fewer when flat ground runs out at "
+                               "spot_min_distance spacing. Placement follows the seed."
+                }),
+                "campsite_size": ("INT", {
+                    "default": 22, "min": 8, "max": 160, "step": 1,
+                    "tooltip": "Diameter (px) of each campsite badge."
+                }),
             },
         }
 
@@ -402,7 +418,8 @@ class SchematicTopographic:
                 pixel_stroke, pixelate_zones, seed, overlay_opacity,
                 image_opacity, texture_opacity, frame_text_size, frame_text_tl, frame_text_tr,
                 frame_text_bl, frame_text_br, palette, bg_color, stroke_color, size_preset,
-                pixelate_mask=None, texture=None, height_mask=None):
+                pixelate_mask=None, texture=None, height_mask=None, campsites=False,
+                campsite_count=6, campsite_size=22):
 
         if elevation_max <= elevation_min:
             print(f"[Schematic] Schematic Topographic: elevation_max ({elevation_max}) <= "
@@ -444,7 +461,7 @@ class SchematicTopographic:
             "label_spacing": label_spacing, "label_unit": label_unit,
             "contour_text": contour_text, "contour_text_on": contour_text_on,
             "contour_text_size": contour_text_size, "contour_text_gap": contour_text_gap,
-            "symbol_size": symbol_size,
+            "symbol_size": symbol_size, "campsite_size": campsite_size,
             "grid": grid, "grid_weight": grid_weight, "grid_labels": grid_labels,
             "map_scale": map_scale, "band_fill": band_fill, "north_arrow": north_arrow,
             "scale_bar": scale_bar, "interval_note": interval_note,
@@ -487,7 +504,7 @@ class SchematicTopographic:
             if flat:
                 print("[Schematic] Schematic Topographic: flat height field - rendering this "
                       "frame contour-free")
-                contours, ticks, arrows, spots, bms = [], [], [], [], []
+                contours, ticks, arrows, spots, bms, camps = [], [], [], [], [], []
             else:
                 F = topo.work_grid(H, stride)
                 gx, gy = topo.gradient(F)
@@ -500,6 +517,8 @@ class SchematicTopographic:
                                            elevation_min, elevation_max) if spot_heights else [])
                 bms = (topo.benchmarks(seed, w, h, benchmark_count, spot_min_distance, spots, F,
                                        stride, elevation_min, elevation_max) if benchmarks else [])
+                camps = (topo.campsites(seed, w, h, campsite_count, spot_min_distance, campsite_size,
+                                        list(spots) + list(bms), gx, gy, stride) if campsites else [])
 
             zones = engine.parse_zone_string(pixelate_zones)
             if pix_mask_bool is not None:
@@ -511,7 +530,7 @@ class SchematicTopographic:
             elements = {
                 "H": None if flat else H, "n_levels": len(levels) + 1,
                 "contours": contours, "hachures": ticks, "arrows": arrows,
-                "spots": spots, "benchmarks": bms, "grid": (xs, ys),
+                "spots": spots, "benchmarks": bms, "campsites": camps, "grid": (xs, ys),
                 "annotations": notes, "scale_bar": sbar, "interval": contour_interval,
                 "zones": zones,
             }

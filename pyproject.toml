@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-schematic"
 description = "Technical data-art nodes: schematic annotation overlays (detection circles, tangent chains, crosshair frames, pixelation zones), projective-geometry construction plates, density-driven Voronoi tessellations and topographic map sheets (contours, hachures, spot heights, grid) over any image"
-version = "0.6.0"
+version = "0.7.0"
 license = { file = "LICENSE" }
 dependencies = ["Pillow>=9.0"]
 

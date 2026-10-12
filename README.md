@@ -1,6 +1,6 @@
 # ComfyUI-Schematic
 
-Turn any image into technical data-art. Four nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), **Schematic Construction** lays a projective-geometry plate over it (two convergent ray pencils, concentric spheres, computed intersections and dense micrographic annotation), **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold, and **Schematic Topographic** draws a complete topographic map sheet over it from a procedural terrain (contours, index contours with elevation labels, hachures, spot heights, benchmarks, slope arrows, grid, marginalia).
+Turn any image into technical data-art. Four nodes, one visual family: **Schematic Overlay** draws a full annotation apparatus over the photo (detection circles, tangent chains, crosshair frames, pixelation zones), **Schematic Construction** lays a projective-geometry plate over it (two convergent ray pencils, concentric spheres, computed intersections and dense micrographic annotation), **Schematic Voronoi** re-renders the photo as a density-driven wireframe tessellation, tiny bright cells where the image is hot, large faint cells where it is cold, and **Schematic Topographic** draws a complete topographic map sheet over it from a procedural terrain (contours, index contours with elevation labels, hachures, spot heights, benchmarks, campsites, slope arrows, grid, marginalia).
 
 ![ComfyUI-Schematic](assets/hero.jpg)
 
@@ -76,6 +76,7 @@ A complete topographic map sheet drawn over the photo, every element with its ow
 - Hachures: short downhill ticks, on depression contours only (the map-sheet convention) or on every contour (`hachure_spacing`, `hachure_length`)
 - Slope arrows on a regular grid, pointing downhill, longer where steeper (`arrow_spacing`, `arrow_length`)
 - Spot heights at local peaks (triangle) and pits (circle) with their elevation; benchmarks (x cross, "BM" + elevation) at seeded positions kept clear of them (`spot_count`, `spot_min_distance`, `symbol_size`, `benchmark_count`)
+- Campsites: scattered CanvasCamp badges pitched on the flatter half of the terrain, clear of the spot heights and benchmarks (`campsites`, `campsite_count`, `campsite_size`; off by default)
 - Grid as full lines, edge ticks, ticks plus interior crosses, or dots, with coordinate labels in metres along the bottom and right edges from `map_scale` (`grid_spacing`, `grid_weight`)
 - Hypsometric `band_fill`: stepped plate tone between contours, stronger with elevation
 - Marginalia: north arrow, a 1-2-5 scale bar from `map_scale`, a "CONTOUR INTERVAL n M" note, one `marginalia_scale` multiplier; `annotations` takes custom call-outs as `x,y:TEXT;x,y:TEXT`

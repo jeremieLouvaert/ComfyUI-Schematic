@@ -253,6 +253,24 @@ Benchmark positions depend on the seed and on the accepted spot heights (the
 rejection rule), and on nothing else — toggling grid, arrows, hachures, labels or
 band fill never moves them.
 
+### 5f'. Campsites (added 2026-10-12, v0.7.0)
+`campsite_count` sites from stream `"campsites"` (a sibling stream, so toggling
+campsites never moves the benchmarks). Candidate as §5f with margin
+`m = 0.08·min(w,h) + campsite_size/2`, `u, v` in that order; accepted iff the
+slope `|∇F|` at the nearest work vertex is ≤ the MEDIAN slope of the field
+(campsites are pitched on the flatter half of the terrain) AND the site is
+≥ `max(spot_min_distance, campsite_size)` px from every spot height, benchmark
+and accepted campsite; at most `80·campsite_count` draws. Flat field → none.
+Symbol: the CanvasCamp badge, `campsite_size` px across: a disc in the stroke
+colour carrying the brand mark (transcribed from
+`Canvascamp001_LogoSymbol_ReDesign_Vector_Model_v001.svg`; disc centre (512,
+526.1), r 104.6 in its 1024 frame, measured off the lockup) knocked out in the
+background colour, inside a background-colour halo of `max(1, contour_weight)`
+px. The ® is dropped (sub-pixel at map scale). Each badge is built opaque on its
+own tile and composited at `overlay_opacity`. The inputs are OPTIONAL with
+python defaults (shipped-node rule): absent or `campsites=False` is bitwise the
+v0.6 output.
+
 ### 5g. Grid
 `grid ∈ {off, lines, ticks, crosses}`, pitch `grid_spacing` px, lines at
 `x = k·grid_spacing` and `y = k·grid_spacing` for `k ≥ 1` inside the canvas.
@@ -309,7 +327,7 @@ Sibling copy of the four-corner frame text (inset 40, `frame_text_size`).
 3. hypsometric band raster (§5h)
 4. overlay-A at 2x: grid → regular contours → hachures → index contours (with
    label gaps) → index labels → slope arrows → spot heights → benchmarks →
-   annotations → grid labels → marginalia → frame text; premultiplied resolve;
+   campsites → annotations → grid labels → marginalia → frame text; premultiplied resolve;
    composite. The band raster and the resolved layer depend only on the
    elements, never on the photo, so the node draws them ONCE per frame and the
    overlay_only pass reuses them (a `cache` dict argument; bitwise-equal to
@@ -340,6 +358,7 @@ passthrough frame, bg-only overlay, zero alpha, bitwise.
 - `slope_arrows(gx, gy, stride, w, h, spacing, length) -> list of ((x0,y0),(x1,y1), L)`
 - `spot_heights(F, stride, count, min_dist, elev_min, elev_max) -> list of (x, y, z, kind)`
 - `benchmarks(seed, w, h, count, min_dist, spots, F, stride, elev_min, elev_max) -> list of (x, y, z)`
+- `campsites(seed, w, h, count, min_dist, size, others, gx, gy, stride) -> list of (x, y)`
 - `grid_lines(w, h, spacing) -> (xs, ys)`
 - `parse_annotations(s) -> list of (x, y, text)`
 - `scale_bar_metres(target_px, map_scale) -> (metres, px)`

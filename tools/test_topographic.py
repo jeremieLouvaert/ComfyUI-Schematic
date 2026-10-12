@@ -824,6 +824,96 @@ control("'contour-free' note predicate: a non-flat (photo) field correctly does 
 
 
 # ===========================================================================
+print("\n[12] Campsites: flat-ground rule, spacing, determinism, off-path identity, badge ink")
+
+H12, _flat12 = topographic.build_height(photo_small_arr, "procedural", 10.0,
+                                        terrain={"seed": 42, "scale": 420, "octaves": 3,
+                                                 "roughness": 0.45, "stretch": 1.6, "angle": 30.0})
+F12 = topographic.work_grid(H12, 2)
+gx12, gy12 = topographic.gradient(F12)
+h12, w12 = H12.shape
+others12 = [(100.0, 100.0), (400.0, 220.0)]
+camps12 = topographic.campsites(42, w12, h12, 8, 60, 22, others12, gx12, gy12, 2)
+g_med12 = float(np.median(np.hypot(gx12, gy12)))
+
+
+def _slope_ok(pts):
+    return all(math.hypot(*topographic.sample_grad(gx12, gy12, x, y, 2)) <= g_med12 for (x, y) in pts)
+
+
+def _spacing_ok(pts, others, md):
+    allp = list(others) + list(pts)
+    for a in range(len(allp)):
+        for b in range(max(a + 1, len(others)), len(allp)):
+            if dist(allp[a], allp[b]) < md - 1e-9:
+                return False
+    return True
+
+
+check("campsites: count honoured (8 placed on the hero terrain)", len(camps12) == 8, f"{len(camps12)}")
+check("campsites: every site on the flatter half (|grad| <= median slope)", _slope_ok(camps12))
+steep = np.unravel_index(int(np.argmax(np.hypot(gx12, gy12))), gx12.shape)
+control("flat-ground predicate rejects a site moved onto the steepest cell",
+        not _slope_ok(camps12[:-1] + [(float(steep[1] * 2), float(steep[0] * 2))]))
+check("campsites: >= max(min_dist, size) from each other and from spots/benchmarks",
+      _spacing_ok(camps12, others12, 60.0))
+control("spacing predicate rejects a site placed 10 px from another",
+        not _spacing_ok(camps12 + [(camps12[0][0] + 10.0, camps12[0][1])], others12, 60.0))
+m12 = 0.08 * min(w12, h12) + 11.0
+check("campsites: inside the margin 0.08*min(w,h) + size/2",
+      all(m12 <= x <= w12 - m12 and m12 <= y <= h12 - m12 for (x, y) in camps12))
+check("campsites: deterministic across calls",
+      camps12 == topographic.campsites(42, w12, h12, 8, 60, 22, others12, gx12, gy12, 2))
+check("campsites: a different seed moves them",
+      camps12 != topographic.campsites(43, w12, h12, 8, 60, 22, others12, gx12, gy12, 2))
+check("campsites: huge min_dist gives a shortfall, never a crash",
+      len(topographic.campsites(42, w12, h12, 8, 5000, 22, [], gx12, gy12, 2)) == 1)
+check("campsites: count 0 -> empty", topographic.campsites(42, w12, h12, 0, 60, 22, [], gx12, gy12, 2) == [])
+
+NODE12 = SchematicTopographic()
+p_abs = {k: v for k, v in DEFAULTS.items() if not k.startswith("campsite")}
+out_abs = NODE12.execute(image=photo_tensor, **p_abs)
+out_off = NODE12.execute(image=photo_tensor, **{**p_abs, "campsites": False, "campsite_count": 40,
+                                                "campsite_size": 90})
+check("campsites=False is bitwise identical to the inputs being absent (all 3 outputs)",
+      all(torch.equal(out_abs[k], out_off[k]) for k in range(3)))
+out_on = NODE12.execute(image=photo_tensor, **{**p_abs, "campsites": True})
+control("identity predicate rejects campsites=True (it does change the image)",
+        not torch.equal(out_abs[0], out_on[0]))
+
+# badge ink probe: one big badge, overlay_only, everything else off
+p_ink = {**p_abs, "campsites": True, "campsite_count": 1, "campsite_size": 80, "spot_heights": False,
+         "benchmarks": False, "grid": "off", "contour_weight": 0.1, "index_every": 0,
+         "hachures": "off", "north_arrow": False, "scale_bar": False, "interval_note": False,
+         "frame_text_tl": "", "frame_text_tr": "", "texture_opacity": 0.0, "contour_interval": 500.0}
+_captured = {}
+_node_topo = sys.modules["cs_pkg.schematic.topographic"]
+_orig_node_cs = _node_topo.campsites
+
+
+def _spy_cs(*a, **k):
+    r = _orig_node_cs(*a, **k)
+    _captured["c"] = r
+    return r
+
+
+_node_topo.campsites = _spy_cs
+out_ink = NODE12.execute(image=photo_tensor, **p_ink)
+_node_topo.campsites = _orig_node_cs
+ov = (out_ink[1][0].numpy() * 255.0)
+cx12, cy12 = _captured["c"][0]
+r12 = 40.0
+disc_px = ov[int(round(cy12 + 0.6 * r12)), int(round(cx12))]
+stripe_px = ov[int(round(cy12 - 0.033 * r12)), int(round(cx12 + 0.245 * r12))]
+check("badge: disc below the mark is stroke colour", np.abs(disc_px - np.array(STROKE_RGB)).max() <= 2,
+      f"{disc_px}")
+check("badge: stripe centroid is knocked out to background colour",
+      np.abs(stripe_px - np.array(BG_RGB)).max() <= 2, f"{stripe_px}")
+control("badge probe rejects the stroke colour at the knockout point",
+        np.abs(stripe_px - np.array(STROKE_RGB)).max() > 2)
+
+
+# ===========================================================================
 print("\n[11] Perf (soft, printed only, NOT gated by this suite): default full-size hero render")
 
 hero_full_arr = (np.asarray(_hero_full_pil).astype(np.float32) / 255.0)
