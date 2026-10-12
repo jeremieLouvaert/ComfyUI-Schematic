@@ -261,11 +261,13 @@ slope `|∇F|` at the nearest work vertex is ≤ the MEDIAN slope of the field
 (campsites are pitched on the flatter half of the terrain) AND the site is
 ≥ `max(spot_min_distance, campsite_size)` px from every spot height, benchmark
 and accepted campsite; at most `80·campsite_count` draws. Flat field → none.
-Symbol: the CanvasCamp badge, `campsite_size` px across: a disc in the stroke
-colour carrying the brand mark (transcribed from
-`Canvascamp001_LogoSymbol_ReDesign_Vector_Model_v001.svg`; disc centre (512,
-526.1), r 104.6 in its 1024 frame, measured off the lockup) knocked out in the
-background colour, inside a background-colour halo of `max(1, contour_weight)`
+Symbol: the CanvasCamp badge, `campsite_size` px across: a disc in the
+background colour carrying the brand mark in the stroke colour, with a
+stroke-colour ring on the rim `max(1, 0.06·campsite_size)` px wide (Jeremie's
+call 2026-10-12: white logo on black, white line round the circle). The mark is
+transcribed from `Canvascamp001_LogoSymbol_ReDesign_Vector_Model_v001.svg`
+(disc centre (512, 526.1), r 104.6 in its 1024 frame, measured off the
+lockup). The badge sits inside a background-colour halo of `max(1, contour_weight)`
 px. The ® is dropped (sub-pixel at map scale). Each badge is built opaque on its
 own tile and composited at `overlay_opacity`. The inputs are OPTIONAL with
 python defaults (shipped-node rule): absent or `campsites=False` is bitwise the

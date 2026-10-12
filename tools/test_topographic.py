@@ -905,12 +905,14 @@ cx12, cy12 = _captured["c"][0]
 r12 = 40.0
 disc_px = ov[int(round(cy12 + 0.6 * r12)), int(round(cx12))]
 stripe_px = ov[int(round(cy12 - 0.033 * r12)), int(round(cx12 + 0.245 * r12))]
-check("badge: disc below the mark is stroke colour", np.abs(disc_px - np.array(STROKE_RGB)).max() <= 2,
+ring_px = ov[int(round(cy12 + r12 - 0.03 * 80.0)), int(round(cx12))]  # mid-ring, 6% of 80 px wide
+check("badge: disc below the mark is background colour", np.abs(disc_px - np.array(BG_RGB)).max() <= 2,
       f"{disc_px}")
-check("badge: stripe centroid is knocked out to background colour",
-      np.abs(stripe_px - np.array(BG_RGB)).max() <= 2, f"{stripe_px}")
-control("badge probe rejects the stroke colour at the knockout point",
-        np.abs(stripe_px - np.array(STROKE_RGB)).max() > 2)
+check("badge: stripe centroid carries the mark in stroke colour",
+      np.abs(stripe_px - np.array(STROKE_RGB)).max() <= 2, f"{stripe_px}")
+check("badge: rim ring is stroke colour", np.abs(ring_px - np.array(STROKE_RGB)).max() <= 2, f"{ring_px}")
+control("badge probe rejects the background colour at the mark point",
+        np.abs(stripe_px - np.array(BG_RGB)).max() > 2)
 
 
 # ===========================================================================
