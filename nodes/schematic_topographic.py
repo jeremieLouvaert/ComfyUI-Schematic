@@ -396,7 +396,22 @@ class SchematicTopographic:
                 }),
                 "campsite_size": ("INT", {
                     "default": 22, "min": 8, "max": 160, "step": 1,
-                    "tooltip": "Diameter (px) of each campsite badge."
+                    "tooltip": "Diameter (px) of each campsite badge (in mark style: the logo's width)."
+                }),
+                "campsite_style": (["badge", "mark"], {
+                    "default": "badge",
+                    "tooltip": "badge: logo on a background disc with a rim ring. mark: the logo "
+                               "alone in the stroke colour, no disc."
+                }),
+                "campsite_logo_scale": ("FLOAT", {
+                    "default": 1.0, "min": 0.3, "max": 1.5, "step": 0.05,
+                    "tooltip": "Logo size relative to its default. Below 1 leaves more room "
+                               "around the logo inside the badge."
+                }),
+                "campsite_ring": ("FLOAT", {
+                    "default": 0.06, "min": 0.0, "max": 0.25, "step": 0.01,
+                    "tooltip": "Badge rim ring thickness as a fraction of the diameter (min 1 px; "
+                               "0 = no ring). Badge style only."
                 }),
             },
         }
@@ -419,7 +434,8 @@ class SchematicTopographic:
                 image_opacity, texture_opacity, frame_text_size, frame_text_tl, frame_text_tr,
                 frame_text_bl, frame_text_br, palette, bg_color, stroke_color, size_preset,
                 pixelate_mask=None, texture=None, height_mask=None, campsites=False,
-                campsite_count=6, campsite_size=22):
+                campsite_count=6, campsite_size=22, campsite_style="badge",
+                campsite_logo_scale=1.0, campsite_ring=0.06):
 
         if elevation_max <= elevation_min:
             print(f"[Schematic] Schematic Topographic: elevation_max ({elevation_max}) <= "
@@ -462,6 +478,8 @@ class SchematicTopographic:
             "contour_text": contour_text, "contour_text_on": contour_text_on,
             "contour_text_size": contour_text_size, "contour_text_gap": contour_text_gap,
             "symbol_size": symbol_size, "campsite_size": campsite_size,
+            "campsite_style": campsite_style, "campsite_logo_scale": campsite_logo_scale,
+            "campsite_ring": campsite_ring,
             "grid": grid, "grid_weight": grid_weight, "grid_labels": grid_labels,
             "map_scale": map_scale, "band_fill": band_fill, "north_arrow": north_arrow,
             "scale_bar": scale_bar, "interval_note": interval_note,

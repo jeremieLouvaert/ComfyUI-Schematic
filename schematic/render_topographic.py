@@ -325,35 +325,58 @@ def _cc_unit(pts):
 CC_MARK = (_cc_unit(_CC_PEAK), _cc_unit(_CC_STRIPE))
 
 
+def _cc_bare(mark):
+    """Unit-disc frame -> bare-mark frame: centred on the mark's own bbox,
+    half-width 1, so a bare mark of diameter `size` spans `size` across."""
+    pts = [p for poly in mark for p in poly]
+    x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
+    y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
+    mx, my, half = (x0 + x1) / 2.0, (y0 + y1) / 2.0, (x1 - x0) / 2.0
+    return tuple([((u - mx) / half, (v - my) / half) for (u, v) in poly] for poly in mark)
+
+
+CC_MARK_BARE = _cc_bare(CC_MARK)
+
+
 def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
-    """CanvasCamp badge per site: background-colour disc carrying the mark in
-    the stroke colour, a stroke-colour ring on the rim (6% of the diameter,
-    min 1 px) and a thin background halo outside it so contours never touch
-    the ring. Each badge is built opaque on its own tile and composited at
-    `op`, so the disc stays clean at partial overlay_opacity."""
+    """CanvasCamp campsite per site, two styles.
+    badge: background-colour disc carrying the mark in the stroke colour, a
+    stroke-colour ring on the rim (campsite_ring x diameter, min 1 px; 0 = no
+    ring) and a thin background halo outside it so contours never touch the
+    ring. mark: the logo alone in the stroke colour, no disc, no halo, its
+    width spanning campsite_size. campsite_logo_scale scales the logo in both.
+    Each site is built opaque on its own tile and composited at `op`, so the
+    disc stays clean at partial overlay_opacity."""
     if not camps or op <= 0.0:
         return
     size = float(params["campsite_size"])
+    bare = params.get("campsite_style", "badge") == "mark"
+    ring_frac = float(params.get("campsite_ring", 0.06))
+    logo = float(params.get("campsite_logo_scale", 1.0))
     r = size / 2.0 * SS
-    ring = max(1.0, 0.06 * size) * SS
+    ring = max(1.0, ring_frac * size) * SS if ring_frac > 0.0 else 0.0
     halo = max(1.0, float(params["contour_weight"])) * SS
-    R = r + halo
-    pad = int(math.ceil(R)) + 2
+    R = r if bare else r + halo
+    rl = r * logo
+    pad = int(math.ceil(max(R, rl))) + 2
     a_op = int(round(np.clip(op, 0.0, 1.0) * 255))
     ink = (int(stroke_rgb[0]), int(stroke_rgb[1]), int(stroke_rgb[2]), 255)
     ground = (int(bg_rgb[0]), int(bg_rgb[1]), int(bg_rgb[2]), 255)
+    mark = CC_MARK_BARE if bare else CC_MARK
     for (x, y) in camps:
         X, Y = x * SS, y * SS
         ox, oy = int(math.floor(X)) - pad, int(math.floor(Y)) - pad
         cx, cy = X - ox, Y - oy
         tile = Image.new("RGBA", (2 * pad + 1, 2 * pad + 1), (0, 0, 0, 0))
         td = ImageDraw.Draw(tile)
-        td.ellipse([cx - R, cy - R, cx + R, cy + R], fill=ground)
-        td.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ink)
-        ri = r - ring
-        td.ellipse([cx - ri, cy - ri, cx + ri, cy + ri], fill=ground)
-        for poly in CC_MARK:
-            td.polygon([(cx + u * r, cy + v * r) for (u, v) in poly], fill=ink)
+        if not bare:
+            td.ellipse([cx - R, cy - R, cx + R, cy + R], fill=ground)
+            if ring > 0.0:
+                td.ellipse([cx - r, cy - r, cx + r, cy + r], fill=ink)
+                ri = r - ring
+                td.ellipse([cx - ri, cy - ri, cx + ri, cy + ri], fill=ground)
+        for poly in mark:
+            td.polygon([(cx + u * rl, cy + v * rl) for (u, v) in poly], fill=ink)
         if a_op < 255:
             alpha = tile.getchannel("A").point(lambda a: (a * a_op + 127) // 255)
             tile.putalpha(alpha)

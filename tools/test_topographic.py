@@ -915,6 +915,52 @@ control("badge probe rejects the background colour at the mark point",
         np.abs(stripe_px - np.array(BG_RGB)).max() > 2)
 
 
+def _ink_run(**over):
+    """overlay_only + overlay_alpha of the single-badge probe with overrides
+    (same seed and size -> same site as cx12, cy12)."""
+    o = NODE12.execute(image=photo_tensor, **{**p_ink, **over})
+    return o[1][0].numpy() * 255.0, o[2][0].numpy()
+
+
+def _near(px, rgb):
+    return np.abs(px - np.array(rgb)).max() <= 2
+
+
+# campsite_ring: thicker ring reaches a point the default ring leaves as disc; 0 removes it
+ring_in = (int(round(cy12 + r12 - 0.12 * 80.0)), int(round(cx12)))  # 9.6 px in from the rim
+ov_thick, _ = _ink_run(campsite_ring=0.15)
+check("ring 0.15: 9.6 px inside the rim is stroke colour", _near(ov_thick[ring_in], STROKE_RGB),
+      f"{ov_thick[ring_in]}")
+control("ring 0.06 (default): the same point is background", _near(ov[ring_in], BG_RGB), f"{ov[ring_in]}")
+ov_none, al_none = _ink_run(campsite_ring=0.0)
+ring_pt = (int(round(cy12 + r12 - 0.03 * 80.0)), int(round(cx12)))
+check("ring 0: mid-ring is background, disc still opaque",
+      _near(ov_none[ring_pt], BG_RGB) and al_none[ring_pt] > 0.99, f"{ov_none[ring_pt]} a={al_none[ring_pt]}")
+
+# campsite_logo_scale: the stripe moves in toward the centre
+ov_small, _ = _ink_run(campsite_logo_scale=0.5)
+stripe_half = (int(round(cy12 - 0.5 * 0.033 * r12)), int(round(cx12 + 0.5 * 0.245 * r12)))
+stripe_full = (int(round(cy12 - 0.033 * r12)), int(round(cx12 + 0.245 * r12)))
+check("logo 0.5: stripe at half the offset is stroke colour", _near(ov_small[stripe_half], STROKE_RGB),
+      f"{ov_small[stripe_half]}")
+check("logo 0.5: the full-scale stripe point is now disc", _near(ov_small[stripe_full], BG_RGB),
+      f"{ov_small[stripe_full]}")
+
+# campsite_style mark: no disc, no ring, logo spans the size
+_bare_stripe = sys.modules["cs_pkg.schematic.render_topographic"].CC_MARK_BARE[1]
+bu = sum(p[0] for p in _bare_stripe) / 4.0
+bv = sum(p[1] for p in _bare_stripe) / 4.0
+ov_mark, al_mark = _ink_run(campsite_style="mark")
+_, al_badge = _ink_run()
+mark_stripe = (int(round(cy12 + bv * r12)), int(round(cx12 + bu * r12)))
+below = (int(round(cy12 + 0.75 * r12)), int(round(cx12)))
+check("mark: stripe centroid is stroke colour", _near(ov_mark[mark_stripe], STROKE_RGB),
+      f"{ov_mark[mark_stripe]}")
+check("mark: no disc and no ring (alpha 0 below the logo and on the rim)",
+      al_mark[below] < 0.01 and al_mark[ring_pt] < 0.01, f"a={al_mark[below]}, {al_mark[ring_pt]}")
+control("badge: the same two points are opaque", al_badge[below] > 0.99 and al_badge[ring_pt] > 0.99)
+
+
 # ===========================================================================
 print("\n[11] Perf (soft, printed only, NOT gated by this suite): default full-size hero render")
 

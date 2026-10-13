@@ -76,7 +76,7 @@ A complete topographic map sheet drawn over the photo, every element with its ow
 - Hachures: short downhill ticks, on depression contours only (the map-sheet convention) or on every contour (`hachure_spacing`, `hachure_length`)
 - Slope arrows on a regular grid, pointing downhill, longer where steeper (`arrow_spacing`, `arrow_length`)
 - Spot heights at local peaks (triangle) and pits (circle) with their elevation; benchmarks (x cross, "BM" + elevation) at seeded positions kept clear of them (`spot_count`, `spot_min_distance`, `symbol_size`, `benchmark_count`)
-- Campsites: scattered CanvasCamp badges pitched on the flatter half of the terrain, clear of the spot heights and benchmarks (`campsites`, `campsite_count`, `campsite_size`; off by default)
+- Campsites: scattered CanvasCamp badges pitched on the flatter half of the terrain, clear of the spot heights and benchmarks (`campsites`, `campsite_count`, `campsite_size`; off by default). `campsite_style` switches between `badge` (logo on a disc with a rim ring) and `mark` (the logo alone, no disc); `campsite_logo_scale` sets the logo size (lower leaves more room inside the badge) and `campsite_ring` the rim thickness (0 = no ring)
 - Grid as full lines, edge ticks, ticks plus interior crosses, or dots, with coordinate labels in metres along the bottom and right edges from `map_scale` (`grid_spacing`, `grid_weight`)
 - Hypsometric `band_fill`: stepped plate tone between contours, stronger with elevation
 - Marginalia: north arrow, a 1-2-5 scale bar from `map_scale`, a "CONTOUR INTERVAL n M" note, one `marginalia_scale` multiplier; `annotations` takes custom call-outs as `x,y:TEXT;x,y:TEXT`
