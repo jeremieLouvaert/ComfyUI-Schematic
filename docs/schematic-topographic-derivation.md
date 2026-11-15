@@ -432,3 +432,64 @@ is touched by this build except `nodes/__init__.py` (registration), `README.md`,
 - Marginalia fixed to their sheet-standard corners (north arrow top-right, scale
   bar + interval note bottom-left) with one `marginalia_scale` multiplier rather
   than per-item position widgets.
+
+## 11. Resolution lock (`reference_size`, added 2026-11-15, v0.9.0)
+
+Every widget in sections 3 to 5 is in canvas pixels, so the sheet is a function
+of the canvas size: the same settings on a 2x canvas give four times the
+landforms, half-size type and half-weight strokes. `reference_size` (optional
+INT, default 0 = off) removes that dependence.
+
+**Model.** `unit = max(w, h) / reference_size` canvas px per LAYOUT UNIT (1.0
+when off). The canvas in layout units is `wu = w / unit`, `hu = h / unit`
+(float noise snapped), i.e. the size the sheet was designed at. Every px-valued
+widget, every hard-coded px constant of section 5 (insets, tick lengths, label
+clearances) and every coordinate (`annotations`, typed `pixelate_zones`) is read
+in layout units. `map_scale` is metres per layout unit, so grid coordinates and
+the scale bar read the same.
+
+**Lines come from the full-resolution field.** `build_height(..., unit)` scales
+its three px inputs (terrain scale, smoothing sigma, the detail window
+`2*round(7*unit)+1`), which samples the SAME continuous landform on the finer
+grid. The work grid keeps `contour_resolution` in canvas px, and the tracer is
+given the cell size `su = stride / unit`, so contours, hachures and the band
+raster come out in layout units with `unit` times the vertices per unit length.
+This is where the extra quality is.
+
+**Point placements come from the reference field.** Spot heights, benchmarks,
+campsites and slope arrows are threshold decisions (strict extrema, the median
+slope, minimum distances, a greedy order with exact ties at F = 0 and 1). On a
+finer grid the borderline ones flip: the first build moved one campsite of six
+between 1K and 2K and swapped the spot order. So under the lock the node also
+builds the field the reference render would build (photo cover-fitted to
+`round(wu) x round(hu)`, literal px, unit 1) and runs those four on it. With the
+procedural source that field is the reference render's own, so sites and their
+printed elevations are equal, not close.
+
+**Drawing.** `render_frame_topographic(..., unit)` draws the vector layer at
+`S = SS * unit` layer px per layout unit (every drawer takes `S`; the layer
+stays `w*SS x h*SS`), with `wu, hu` as the layout canvas. The mosaic is a raster
+step on the real canvas: zones arrive in canvas px, `pixel_size`, `zone_size`
+and the label size are multiplied by `unit`, and `pixelate_canvas(unit=)` prints
+the zone label in layout units and scales the outline.
+
+**Off is bitwise.** `unit == 1.0` keeps the int `SS`, `w`, `h` and `stride`, so
+reference_size 0, an absent kwarg, and reference_size == long side are all
+bitwise the v0.8.0 render (checked against git HEAD on 5 cases).
+
+**What does not match.** (a) Strokes carry about 10 % more ink at 2K than at 1K
+for the same nominal weight: PIL under-draws 2-layer-px lines, and the reference
+size is the thin one. 4K vs 2K differs by under 1 %. (b) Arc phase: labels,
+contour text and hachures start from each polyline's first vertex, which the
+finer tracer places within a cell of the reference one; a contour that splits or
+joins differently (1 of 51 at 4K in the probe) re-phases its own labels.
+(c) Grain is generated per canvas pixel, so it is finer at high resolution.
+(d) Photo-derived terrain depends on the photo's own content at that size.
+
+**Cost.** The scaled Gaussian is the only extra work that grows: 2K 8.7 s vs
+6.7 s unlocked, 4K 44 s vs 34 s (default settings, this machine).
+
+**Teeth [13]** (written with the feature): off and unit-1 identity, exact
+placement equality, contour length within 1 %, ink-density map, typed-zone
+scaling, non-integer unit; the unlocked 2x render is the negative control for
+each.

@@ -83,6 +83,7 @@ A complete topographic map sheet drawn over the photo, every element with its ow
 - Overlay's pixelation zones (`pixelate_zones`, `pixelate_mask`, `pixel_size`, `zone_size`, `pixel_stroke`) to alter the photo underneath
 - Same palettes, seeded grain texture, four-corner frame text, size presets and three outputs as the siblings
 - Deterministic: the same seed always gives the same terrain and benchmarks, every frame of a batch
+- `reference_size` locks the sheet to the size you designed it at. Every setting on this node is in pixels, so by default a 2K input gives a different, denser map than a 1K one. Set `reference_size` to the long side you tuned the look at (1024, say) and any larger input renders the same sheet, sharper: same landforms, same spot heights, benchmarks and campsites, strokes and type scaled with the canvas. `annotations` and `pixelate_zones` are then typed in reference pixels. 0 (the default) leaves everything in literal pixels
 
 ## Outputs (Overlay and Construction)
 

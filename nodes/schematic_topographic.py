@@ -71,6 +71,12 @@ def _canvas_mask(m, w, h):
     return np.clip(fitted[..., 0].astype(np.float64), 0.0, 1.0)
 
 
+def _snap(v):
+    """Drop float noise from a px / unit division (1100 / 1.1 -> 500.0)."""
+    r = round(v)
+    return float(r) if abs(v - r) < 1e-6 else v
+
+
 SIZE_PRESETS = {
     "match input": None,
     "Portrait 3:4 (1200x1600)": (1200, 1600),
@@ -413,6 +419,15 @@ class SchematicTopographic:
                     "tooltip": "Badge rim ring thickness as a fraction of the diameter (min 1 px; "
                                "0 = no ring). Badge style only."
                 }),
+                "reference_size": ("INT", {
+                    "default": 0, "min": 0, "max": 16384, "step": 8,
+                    "tooltip": "Resolution lock. 0 = off: every px setting is literal canvas pixels, so "
+                               "a bigger input gives a different, denser sheet. Set it to the long side "
+                               "(px) you tuned the look at (e.g. 1024) and every px setting is read at "
+                               "that size and scaled to the canvas: a 2K or 4K input renders the SAME "
+                               "sheet, just sharper. Annotations and pixelate_zones are then given in "
+                               "reference pixels too."
+                }),
             },
         }
 
@@ -435,7 +450,7 @@ class SchematicTopographic:
                 frame_text_bl, frame_text_br, palette, bg_color, stroke_color, size_preset,
                 pixelate_mask=None, texture=None, height_mask=None, campsites=False,
                 campsite_count=6, campsite_size=22, campsite_style="badge",
-                campsite_logo_scale=1.0, campsite_ring=0.06):
+                campsite_logo_scale=1.0, campsite_ring=0.06, reference_size=0):
 
         if elevation_max <= elevation_min:
             print(f"[Schematic] Schematic Topographic: elevation_max ({elevation_max}) <= "
@@ -512,12 +527,23 @@ class SchematicTopographic:
 
             fitted = engine.cover_fit(frame, w, h)
 
+            # reference_size lock (spec section 11): `unit` = canvas px per layout
+            # unit. Geometry is computed in layout units (canvas wu x hu, work
+            # cell su); the renderer draws at SS * unit. Lines (contours,
+            # hachures, bands) come from the full-resolution field; point
+            # placements decide on a reference-size field (below). unit == 1.0
+            # keeps the ints -> bitwise the unlocked path.
+            unit = max(w, h) / float(reference_size) if reference_size > 0 else 1.0
+            locked = unit != 1.0
+            wu, hu = (_snap(w / unit), _snap(h / unit)) if locked else (w, h)
+            su = stride / unit if locked else stride
+
             canvas_mask = _canvas_mask(mask01, w, h) if mask01 is not None else None
             terrain = {"seed": seed, "scale": terrain_scale, "octaves": terrain_octaves,
                        "roughness": terrain_roughness, "stretch": terrain_stretch,
                        "angle": terrain_angle}
             H, flat = topo.build_height(fitted, height_source, smoothing, mask01=canvas_mask,
-                                        terrain=terrain)
+                                        terrain=terrain, unit=unit)
 
             if flat:
                 print("[Schematic] Schematic Topographic: flat height field - rendering this "
@@ -526,24 +552,44 @@ class SchematicTopographic:
             else:
                 F = topo.work_grid(H, stride)
                 gx, gy = topo.gradient(F)
-                contours = topo.build_contours(F, levels, stride)
-                ticks = topo.hachure_ticks(contours, gx, gy, stride, hachures,
+                contours = topo.build_contours(F, levels, su)
+                ticks = topo.hachure_ticks(contours, gx, gy, su, hachures,
                                            hachure_spacing, hachure_length, F=F)
-                arrows = (topo.slope_arrows(gx, gy, stride, w, h, arrow_spacing, arrow_length)
-                          if slope_arrows else [])
-                spots = (topo.spot_heights(F, stride, spot_count, spot_min_distance,
-                                           elevation_min, elevation_max) if spot_heights else [])
-                bms = (topo.benchmarks(seed, w, h, benchmark_count, spot_min_distance, spots, F,
-                                       stride, elevation_min, elevation_max) if benchmarks else [])
-                camps = (topo.campsites(seed, w, h, campsite_count, spot_min_distance, campsite_size,
-                                        list(spots) + list(bms), gx, gy, stride) if campsites else [])
 
+                # Point placements are threshold decisions (extrema, flat ground,
+                # min distance): on a finer grid the borderline ones flip. Under
+                # the lock they decide on the field the REFERENCE render builds
+                # (canvas at reference size, literal px), so every spot height,
+                # benchmark, campsite, arrow and its elevation matches it.
+                Fp, gxp, gyp, sp = F, gx, gy, su
+                if locked:
+                    rw, rh = max(8, int(round(wu))), max(8, int(round(hu)))
+                    ref_mask = _canvas_mask(mask01, rw, rh) if mask01 is not None else None
+                    Hr, ref_flat = topo.build_height(engine.cover_fit(frame, rw, rh), height_source,
+                                                     smoothing, mask01=ref_mask, terrain=terrain)
+                    if not ref_flat:
+                        Fp = topo.work_grid(Hr, stride)
+                        gxp, gyp = topo.gradient(Fp)
+                        sp = stride
+                arrows = (topo.slope_arrows(gxp, gyp, sp, wu, hu, arrow_spacing, arrow_length)
+                          if slope_arrows else [])
+                spots = (topo.spot_heights(Fp, sp, spot_count, spot_min_distance,
+                                           elevation_min, elevation_max) if spot_heights else [])
+                bms = (topo.benchmarks(seed, wu, hu, benchmark_count, spot_min_distance, spots, Fp,
+                                       sp, elevation_min, elevation_max) if benchmarks else [])
+                camps = (topo.campsites(seed, wu, hu, campsite_count, spot_min_distance, campsite_size,
+                                        list(spots) + list(bms), gxp, gyp, sp) if campsites else [])
+
+            # zones stay in CANVAS px (the mosaic is a raster step); typed zones
+            # are layout units, mask centroids are already canvas px
             zones = engine.parse_zone_string(pixelate_zones)
+            if locked:
+                zones = [(zx * unit, zy * unit) for (zx, zy) in zones]
             if pix_mask_bool is not None:
                 zones = zones + engine.mask_zone_centers(engine.nearest_resample_mask(pix_mask_bool, w, h))
 
-            xs, ys = topo.grid_lines(w, h, grid_spacing) if grid != "off" else ([], [])
-            sbar = topo.scale_bar_metres(0.18 * w, map_scale) if scale_bar else None
+            xs, ys = topo.grid_lines(wu, hu, grid_spacing) if grid != "off" else ([], [])
+            sbar = topo.scale_bar_metres(0.18 * wu, map_scale) if scale_bar else None
 
             elements = {
                 "H": None if flat else H, "n_levels": len(levels) + 1,
@@ -562,10 +608,10 @@ class SchematicTopographic:
             cache = {}  # vector layer + band raster shared by both passes of this frame
             img_out, alpha = render_topographic.render_frame_topographic(
                 fitted, w, h, (bg_rgb, stroke_rgb), rparams, elements, texture_canvas, True, PACK_ROOT,
-                cache=cache)
+                cache=cache, unit=unit)
             overlay_out, _ = render_topographic.render_frame_topographic(
                 fitted, w, h, (bg_rgb, stroke_rgb), rparams, elements, texture_canvas, False, PACK_ROOT,
-                cache=cache)
+                cache=cache, unit=unit)
 
             out_images.append(img_out.astype(np.float32) / 255.0)
             out_overlays.append(overlay_out.astype(np.float32) / 255.0)

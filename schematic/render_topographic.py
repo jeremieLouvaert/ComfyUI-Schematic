@@ -24,20 +24,20 @@ from . import topographic as topo
 from .draw_common import SS, _rgba, _load_font, _resolve_overlay
 
 
-def _w(px):
-    """Stroke width in supersampled pixels."""
-    return max(1, int(round(float(px) * SS)))
+def _w(px, S):
+    """Stroke width in layer pixels (S = layer px per layout unit)."""
+    return max(1, int(round(float(px) * S)))
 
 
-def _pts_ss(pts):
-    return [(float(x) * SS, float(y) * SS) for (x, y) in pts]
+def _pts_ss(pts, S):
+    return [(float(x) * S, float(y) * S) for (x, y) in pts]
 
 
-def _text_rotated(layer, cx, cy, text, font, fill, angle_deg):
+def _text_rotated(layer, cx, cy, text, font, fill, angle_deg, S):
     """Draw `text` centred at canvas (cx, cy) rotated by angle_deg (CCW, degrees)
     into the supersampled RGBA layer. angle 0 uses the direct 'mm' anchor."""
     if abs(angle_deg) < 1e-9:
-        ImageDraw.Draw(layer, "RGBA").text((cx * SS, cy * SS), text, font=font, fill=fill, anchor="mm")
+        ImageDraw.Draw(layer, "RGBA").text((cx * S, cy * S), text, font=font, fill=fill, anchor="mm")
         return
     d0 = ImageDraw.Draw(layer, "RGBA")
     bb = d0.textbbox((0, 0), text, font=font, anchor="la")
@@ -46,8 +46,8 @@ def _text_rotated(layer, cx, cy, text, font, fill, angle_deg):
     sc = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
     ImageDraw.Draw(sc, "RGBA").text((tw / 2.0, th / 2.0), text, font=font, fill=fill, anchor="mm")
     sc = sc.rotate(angle_deg, expand=True, resample=Image.BICUBIC)
-    ox = int(round(cx * SS - sc.width / 2.0))
-    oy = int(round(cy * SS - sc.height / 2.0))
+    ox = int(round(cx * S - sc.width / 2.0))
+    oy = int(round(cy * S - sc.height / 2.0))
     layer.alpha_composite(sc, (ox, oy))
 
 
@@ -55,76 +55,76 @@ def _text_rotated(layer, cx, cy, text, font, fill, angle_deg):
 # element drawers (section 6 order)
 # ---------------------------------------------------------------------------
 
-def _draw_grid(draw, w, h, xs, ys, mode, stroke_rgb, op, weight):
+def _draw_grid(draw, w, h, xs, ys, mode, stroke_rgb, op, weight, S):
     if mode == "off" or (not xs and not ys):
         return
-    width = _w(weight)
+    width = _w(weight, S)
     if mode == "lines":
         fill = _rgba(stroke_rgb, 0.35 * op)
         for x in xs:
-            draw.line([(x * SS, 0), (x * SS, h * SS)], fill=fill, width=width)
+            draw.line([(x * S, 0), (x * S, h * S)], fill=fill, width=width)
         for y in ys:
-            draw.line([(0, y * SS), (w * SS, y * SS)], fill=fill, width=width)
+            draw.line([(0, y * S), (w * S, y * S)], fill=fill, width=width)
         return
     fill = _rgba(stroke_rgb, 0.7 * op)
     if mode == "dots":
-        r = max(1.0, 0.9 * float(weight)) * SS
+        r = max(1.0, 0.9 * float(weight)) * S
         for x in xs:
             for y in ys:
-                draw.ellipse([x * SS - r, y * SS - r, x * SS + r, y * SS + r], fill=fill)
+                draw.ellipse([x * S - r, y * S - r, x * S + r, y * S + r], fill=fill)
         return
-    tick = 12.0 * SS
+    tick = 12.0 * S
     for x in xs:
-        draw.line([(x * SS, 0), (x * SS, tick)], fill=fill, width=width)
-        draw.line([(x * SS, h * SS - tick), (x * SS, h * SS)], fill=fill, width=width)
+        draw.line([(x * S, 0), (x * S, tick)], fill=fill, width=width)
+        draw.line([(x * S, h * S - tick), (x * S, h * S)], fill=fill, width=width)
     for y in ys:
-        draw.line([(0, y * SS), (tick, y * SS)], fill=fill, width=width)
-        draw.line([(w * SS - tick, y * SS), (w * SS, y * SS)], fill=fill, width=width)
+        draw.line([(0, y * S), (tick, y * S)], fill=fill, width=width)
+        draw.line([(w * S - tick, y * S), (w * S, y * S)], fill=fill, width=width)
     if mode == "crosses":
-        arm = 6.0 * SS
+        arm = 6.0 * S
         for x in xs:
             for y in ys:
-                draw.line([(x * SS - arm, y * SS), (x * SS + arm, y * SS)], fill=fill, width=width)
-                draw.line([(x * SS, y * SS - arm), (x * SS, y * SS + arm)], fill=fill, width=width)
+                draw.line([(x * S - arm, y * S), (x * S + arm, y * S)], fill=fill, width=width)
+                draw.line([(x * S, y * S - arm), (x * S, y * S + arm)], fill=fill, width=width)
 
 
-def _draw_grid_labels(layer, draw, w, h, xs, ys, stroke_rgb, op, label_size, map_scale, font_dir):
-    font = _load_font(font_dir, label_size * SS)
+def _draw_grid_labels(layer, draw, w, h, xs, ys, stroke_rgb, op, label_size, map_scale, font_dir, S):
+    font = _load_font(font_dir, label_size * S)
     fill = _rgba(stroke_rgb, op)
     clear = 80.0
     for x in xs:
         if x < clear or x > w - clear:
             continue
         txt = str(int(round(x * map_scale)))
-        draw.text((x * SS, (h - 6) * SS), txt, font=font, fill=fill, anchor="md")
+        draw.text((x * S, (h - 6) * S), txt, font=font, fill=fill, anchor="md")
     for y in ys:
         if y < clear or y > h - clear:
             continue
         txt = str(int(round((h - y) * map_scale)))
         # rotated 90 CCW, centred 6 px + half the text height inside the right edge
         bb = draw.textbbox((0, 0), txt, font=font, anchor="la")
-        th = (bb[3] - bb[1]) / SS
-        _text_rotated(layer, w - 6 - th / 2.0, y, txt, font, fill, 90)
+        th = (bb[3] - bb[1]) / S
+        _text_rotated(layer, w - 6 - th / 2.0, y, txt, font, fill, 90, S)
 
 
-def _draw_polylines(draw, lines, fill, width):
+def _draw_polylines(draw, lines, fill, width, S):
     for pts in lines:
         if len(pts) < 2:
             continue
-        draw.line(_pts_ss(pts), fill=fill, width=width, joint="curve")
+        draw.line(_pts_ss(pts, S), fill=fill, width=width, joint="curve")
 
 
-def _draw_contours(draw, layer, contours, stroke_rgb, op, params, font_dir):
+def _draw_contours(draw, layer, contours, stroke_rgb, op, params, font_dir, S):
     """Regular (non-index) contours, under everything else. When contour_text
     runs on ALL lines, the arc under each text run is left open."""
     reg_fill = _rgba(stroke_rgb, 0.55 * op)
-    reg_w = _w(params["contour_weight"])
+    reg_w = _w(params["contour_weight"], S)
     ctext = str(params.get("contour_text", "")).strip()
     text_all = bool(ctext) and params.get("contour_text_on", "index") == "all"
     advances = None
     if text_all:
-        cfont = _load_font(font_dir, float(params.get("contour_text_size", 11)) * SS)
-        advances = [cfont.getlength(ch) / SS for ch in ctext + "  "]
+        cfont = _load_font(font_dir, float(params.get("contour_text_size", 11)) * S)
+        advances = [cfont.getlength(ch) / S for ch in ctext + "  "]
         gap = float(params.get("contour_text_gap", 60))
         lead = float(params.get("contour_text_size", 11)) * 1.2
     for lev in contours:
@@ -135,32 +135,32 @@ def _draw_contours(draw, layer, contours, stroke_rgb, op, params, font_dir):
                 _places, gaps = topo.text_runs(pts, closed, advances, gap, lead)
                 if gaps:
                     for sub in topo.split_by_gaps(pts, closed, gaps):
-                        draw.line(_pts_ss(sub), fill=reg_fill, width=reg_w, joint="curve")
+                        draw.line(_pts_ss(sub, S), fill=reg_fill, width=reg_w, joint="curve")
                     continue
             p = topo._closed_pts(pts, closed)
-            draw.line(_pts_ss(p), fill=reg_fill, width=reg_w, joint="curve")
+            draw.line(_pts_ss(p, S), fill=reg_fill, width=reg_w, joint="curve")
 
 
-def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir):
+def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir, S):
     cw = params["contour_weight"]
     iw = cw * params["index_weight"]
     idx_fill = _rgba(stroke_rgb, op)
-    idx_w = _w(iw)
+    idx_w = _w(iw, S)
     labels_on = bool(params["contour_labels"])
     label_size = float(params["label_size"])
     spacing = float(params["label_spacing"])
     unit = str(params.get("label_unit", ""))
-    font = _load_font(font_dir, label_size * SS) if labels_on else None
+    font = _load_font(font_dir, label_size * S) if labels_on else None
 
     ctext = str(params.get("contour_text", "")).strip()
     ctext_on = params.get("contour_text_on", "index")
     ctext_size = float(params.get("contour_text_size", 11))
     ctext_gap = float(params.get("contour_text_gap", 60))
-    cfont = _load_font(font_dir, ctext_size * SS) if ctext else None
+    cfont = _load_font(font_dir, ctext_size * S) if ctext else None
     advances = None
     if ctext:
         rep = ctext + "  "
-        advances = [cfont.getlength(ch) / SS for ch in rep]
+        advances = [cfont.getlength(ch) / S for ch in rep]
 
     labels = []
     glyphs = []
@@ -171,7 +171,7 @@ def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir
             continue
         text = str(int(round(lev["z"]))) + unit
         fill = idx_fill if is_idx else _rgba(stroke_rgb, 0.55 * op)
-        width = idx_w if is_idx else _w(cw)
+        width = idx_w if is_idx else _w(cw, S)
         for (pts, closed) in lev["lines"]:
             L = topo.polyline_length(pts, closed)
             gaps = []
@@ -181,7 +181,7 @@ def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir
                     glyphs.append((places, fill))
                     gaps.extend(tgaps)
             if is_idx and labels_on and spacing > 0 and L >= spacing and not gaps:
-                tw = font.getlength(text) / SS
+                tw = font.getlength(text) / S
                 half = tw / 2.0 + 0.6 * label_size
                 s = spacing / 2.0
                 while s + spacing / 2.0 <= L + 1e-9:
@@ -208,12 +208,12 @@ def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir
                 continue
             if gaps:
                 for sub in topo.split_by_gaps(pts, closed, gaps):
-                    draw.line(_pts_ss(sub), fill=fill, width=width, joint="curve")
+                    draw.line(_pts_ss(sub, S), fill=fill, width=width, joint="curve")
             else:
                 p = topo._closed_pts(pts, closed)
-                draw.line(_pts_ss(p), fill=fill, width=width, joint="curve")
+                draw.line(_pts_ss(p, S), fill=fill, width=width, joint="curve")
     for (x, y, text, angle) in labels:
-        _text_rotated(layer, x, y, text, font, idx_fill, angle)
+        _text_rotated(layer, x, y, text, font, idx_fill, angle, S)
     if glyphs:
         rep = ctext + "  "
         for (places, fill) in glyphs:
@@ -221,26 +221,26 @@ def _draw_index_contours(draw, layer, contours, stroke_rgb, op, params, font_dir
                 ch = rep[k % len(rep)]
                 if ch == " ":
                     continue
-                _text_rotated(layer, x, y, ch, cfont, fill, ang)
+                _text_rotated(layer, x, y, ch, cfont, fill, ang, S)
 
 
-def _draw_ticks(draw, ticks, stroke_rgb, op, weight):
+def _draw_ticks(draw, ticks, stroke_rgb, op, weight, S):
     if not ticks:
         return
     fill = _rgba(stroke_rgb, 0.55 * op)
-    width = _w(weight)
+    width = _w(weight, S)
     for ((x0, y0), (x1, y1)) in ticks:
-        draw.line([(x0 * SS, y0 * SS), (x1 * SS, y1 * SS)], fill=fill, width=width)
+        draw.line([(x0 * S, y0 * S), (x1 * S, y1 * S)], fill=fill, width=width)
 
 
-def _draw_arrows(draw, arrows, stroke_rgb, op, weight):
+def _draw_arrows(draw, arrows, stroke_rgb, op, weight, S):
     if not arrows:
         return
     fill = _rgba(stroke_rgb, 0.7 * op)
-    width = _w(weight)
+    width = _w(weight, S)
     ang = math.radians(28.0)
     for ((x0, y0), (x1, y1), L) in arrows:
-        draw.line([(x0 * SS, y0 * SS), (x1 * SS, y1 * SS)], fill=fill, width=width)
+        draw.line([(x0 * S, y0 * S), (x1 * S, y1 * S)], fill=fill, width=width)
         dx, dy = x1 - x0, y1 - y0
         n = math.hypot(dx, dy)
         if n <= 0:
@@ -251,42 +251,42 @@ def _draw_arrows(draw, arrows, stroke_rgb, op, weight):
             c, s_ = math.cos(ang), math.sin(ang) * sgn
             bx = -ux * c + uy * s_
             by = -uy * c - ux * s_
-            draw.line([(x1 * SS, y1 * SS), ((x1 + hl * bx) * SS, (y1 + hl * by) * SS)],
+            draw.line([(x1 * S, y1 * S), ((x1 + hl * bx) * S, (y1 + hl * by) * S)],
                       fill=fill, width=width)
 
 
-def _draw_spots(draw, spots, stroke_rgb, op, params, font_dir):
+def _draw_spots(draw, spots, stroke_rgb, op, params, font_dir, S):
     if not spots:
         return
     fill = _rgba(stroke_rgb, op)
     size = float(params["symbol_size"])
-    width = _w(params["contour_weight"])
-    font = _load_font(font_dir, params["label_size"] * SS)
+    width = _w(params["contour_weight"], S)
+    font = _load_font(font_dir, params["label_size"] * S)
     for (x, y, z, kind) in spots:
         if kind == "peak":
             r = size / math.sqrt(3.0)   # circumradius of a triangle of side `size`
             pts = [(x, y - r), (x + size / 2.0, y + r / 2.0), (x - size / 2.0, y + r / 2.0)]
-            draw.polygon(_pts_ss(pts), fill=fill)
+            draw.polygon(_pts_ss(pts, S), fill=fill)
         else:
             r = size / 2.0
-            draw.ellipse([(x - r) * SS, (y - r) * SS, (x + r) * SS, (y + r) * SS],
+            draw.ellipse([(x - r) * S, (y - r) * S, (x + r) * S, (y + r) * S],
                          outline=fill, width=width)
-        draw.text(((x + size * 0.8 + 2) * SS, y * SS), str(int(round(z))), font=font,
+        draw.text(((x + size * 0.8 + 2) * S, y * S), str(int(round(z))), font=font,
                   fill=fill, anchor="lm")
 
 
-def _draw_benchmarks(draw, bms, stroke_rgb, op, params, font_dir):
+def _draw_benchmarks(draw, bms, stroke_rgb, op, params, font_dir, S):
     if not bms:
         return
     fill = _rgba(stroke_rgb, op)
     size = float(params["symbol_size"])
     r = size / 2.0
-    width = _w(params["contour_weight"])
-    font = _load_font(font_dir, params["label_size"] * SS)
+    width = _w(params["contour_weight"], S)
+    font = _load_font(font_dir, params["label_size"] * S)
     for (x, y, z) in bms:
-        draw.line([((x - r) * SS, (y - r) * SS), ((x + r) * SS, (y + r) * SS)], fill=fill, width=width)
-        draw.line([((x - r) * SS, (y + r) * SS), ((x + r) * SS, (y - r) * SS)], fill=fill, width=width)
-        draw.text(((x + size * 0.8 + 2) * SS, y * SS), "BM " + str(int(round(z))), font=font,
+        draw.line([((x - r) * S, (y - r) * S), ((x + r) * S, (y + r) * S)], fill=fill, width=width)
+        draw.line([((x - r) * S, (y + r) * S), ((x + r) * S, (y - r) * S)], fill=fill, width=width)
+        draw.text(((x + size * 0.8 + 2) * S, y * S), "BM " + str(int(round(z))), font=font,
                   fill=fill, anchor="lm")
 
 
@@ -338,7 +338,7 @@ def _cc_bare(mark):
 CC_MARK_BARE = _cc_bare(CC_MARK)
 
 
-def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
+def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params, S):
     """CanvasCamp campsite per site, two styles.
     badge: background-colour disc carrying the mark in the stroke colour, a
     stroke-colour ring on the rim (campsite_ring x diameter, min 1 px; 0 = no
@@ -353,9 +353,9 @@ def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
     bare = params.get("campsite_style", "badge") == "mark"
     ring_frac = float(params.get("campsite_ring", 0.06))
     logo = float(params.get("campsite_logo_scale", 1.0))
-    r = size / 2.0 * SS
-    ring = max(1.0, ring_frac * size) * SS if ring_frac > 0.0 else 0.0
-    halo = max(1.0, float(params["contour_weight"])) * SS
+    r = size / 2.0 * S
+    ring = max(1.0, ring_frac * size) * S if ring_frac > 0.0 else 0.0
+    halo = max(1.0, float(params["contour_weight"])) * S
     R = r if bare else r + halo
     rl = r * logo
     pad = int(math.ceil(max(R, rl))) + 2
@@ -364,7 +364,7 @@ def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
     ground = (int(bg_rgb[0]), int(bg_rgb[1]), int(bg_rgb[2]), 255)
     mark = CC_MARK_BARE if bare else CC_MARK
     for (x, y) in camps:
-        X, Y = x * SS, y * SS
+        X, Y = x * S, y * S
         ox, oy = int(math.floor(X)) - pad, int(math.floor(Y)) - pad
         cx, cy = X - ox, Y - oy
         tile = Image.new("RGBA", (2 * pad + 1, 2 * pad + 1), (0, 0, 0, 0))
@@ -383,33 +383,33 @@ def _draw_campsites(layer, camps, stroke_rgb, bg_rgb, op, params):
         layer.alpha_composite(tile, (ox, oy))
 
 
-def _draw_annotations(draw, w, notes, stroke_rgb, op, params, font_dir):
+def _draw_annotations(draw, w, notes, stroke_rgb, op, params, font_dir, S):
     if not notes:
         return
     fill = _rgba(stroke_rgb, op)
     ms = float(params["marginalia_scale"])
-    width = _w(params["contour_weight"])
-    font = _load_font(font_dir, params["label_size"] * 1.2 * SS)
-    dot = 2.5 * SS
+    width = _w(params["contour_weight"], S)
+    font = _load_font(font_dir, params["label_size"] * 1.2 * S)
+    dot = 2.5 * S
     up = 28.0 * ms
     tail = 36.0 * ms
     for (x, y, text) in notes:
-        draw.ellipse([x * SS - dot, y * SS - dot, x * SS + dot, y * SS + dot], fill=fill)
+        draw.ellipse([x * S - dot, y * S - dot, x * S + dot, y * S + dot], fill=fill)
         sgn = -1.0 if x > 0.7 * w else 1.0
         ex, ey = x + sgn * up, y - up
         tx = ex + sgn * tail
-        draw.line([(x * SS, y * SS), (ex * SS, ey * SS), (tx * SS, ey * SS)], fill=fill, width=width)
+        draw.line([(x * S, y * S), (ex * S, ey * S), (tx * S, ey * S)], fill=fill, width=width)
         anchor = "lm" if sgn > 0 else "rm"
-        draw.text(((tx + sgn * 6) * SS, ey * SS), text, font=font, fill=fill, anchor=anchor)
+        draw.text(((tx + sgn * 6) * S, ey * S), text, font=font, fill=fill, anchor=anchor)
 
 
-def _draw_marginalia(draw, w, h, stroke_rgb, op, params, elements, font_dir):
+def _draw_marginalia(draw, w, h, stroke_rgb, op, params, elements, font_dir, S):
     fill = _rgba(stroke_rgb, op)
     ms = float(params["marginalia_scale"])
-    width = _w(params["contour_weight"])
+    width = _w(params["contour_weight"], S)
     label_size = float(params["label_size"])
     fts = float(params["frame_text_size"])
-    font = _load_font(font_dir, label_size * SS)
+    font = _load_font(font_dir, label_size * S)
 
     if params["north_arrow"]:
         cx = w - 40 - 10 * ms
@@ -417,11 +417,11 @@ def _draw_marginalia(draw, w, h, stroke_rgb, op, params, elements, font_dir):
         shaft = 44 * ms
         tip_y = cy - shaft / 2.0
         base_y = cy + shaft / 2.0
-        draw.line([(cx * SS, base_y * SS), (cx * SS, (tip_y + 14 * ms) * SS)], fill=fill, width=width)
-        draw.polygon([(cx * SS, tip_y * SS), ((cx - 6 * ms) * SS, (tip_y + 14 * ms) * SS),
-                      ((cx + 6 * ms) * SS, (tip_y + 14 * ms) * SS)], fill=fill)
-        nfont = _load_font(font_dir, label_size * 1.2 * SS)
-        draw.text((cx * SS, (tip_y - 10 * ms) * SS), "N", font=nfont, fill=fill, anchor="mm")
+        draw.line([(cx * S, base_y * S), (cx * S, (tip_y + 14 * ms) * S)], fill=fill, width=width)
+        draw.polygon([(cx * S, tip_y * S), ((cx - 6 * ms) * S, (tip_y + 14 * ms) * S),
+                      ((cx + 6 * ms) * S, (tip_y + 14 * ms) * S)], fill=fill)
+        nfont = _load_font(font_dir, label_size * 1.2 * S)
+        draw.text((cx * S, (tip_y - 10 * ms) * S), "N", font=nfont, fill=fill, anchor="mm")
 
     bar_base = h - 40 - fts * 1.6 - 14 * ms
     if params["scale_bar"] and elements.get("scale_bar") is not None:
@@ -433,19 +433,19 @@ def _draw_marginalia(draw, w, h, stroke_rgb, op, params, elements, font_dir):
             for k in range(4):
                 xa, xb = x0 + k * seg, x0 + (k + 1) * seg
                 if k % 2 == 0:
-                    draw.rectangle([xa * SS, (bar_base - bh) * SS, xb * SS, bar_base * SS], fill=fill)
+                    draw.rectangle([xa * S, (bar_base - bh) * S, xb * S, bar_base * S], fill=fill)
                 else:
-                    draw.rectangle([xa * SS, (bar_base - bh) * SS, xb * SS, bar_base * SS],
+                    draw.rectangle([xa * S, (bar_base - bh) * S, xb * S, bar_base * S],
                                    outline=fill, width=width)
             for xt in (x0, x0 + bar_px):
-                draw.line([(xt * SS, (bar_base - bh - 4 * ms) * SS), (xt * SS, bar_base * SS)],
+                draw.line([(xt * S, (bar_base - bh - 4 * ms) * S), (xt * S, bar_base * S)],
                           fill=fill, width=width)
             if metres >= 1000:
                 unit = f"{metres / 1000.0:g} km"
             else:
                 unit = f"{metres:g} m"
-            draw.text((x0 * SS, (bar_base - bh - 6 * ms) * SS), "0", font=font, fill=fill, anchor="ld")
-            draw.text(((x0 + bar_px) * SS, (bar_base - bh - 6 * ms) * SS), unit, font=font,
+            draw.text((x0 * S, (bar_base - bh - 6 * ms) * S), "0", font=font, fill=fill, anchor="ld")
+            draw.text(((x0 + bar_px) * S, (bar_base - bh - 6 * ms) * S), unit, font=font,
                       fill=fill, anchor="rd")
 
     if params["interval_note"]:
@@ -454,13 +454,13 @@ def _draw_marginalia(draw, w, h, stroke_rgb, op, params, elements, font_dir):
             ny = bar_base + 6 * ms + label_size * 1.4
         else:
             ny = h - 40 - fts * 1.6
-        draw.text((40 * SS, ny * SS), note, font=font, fill=fill, anchor="ld")
+        draw.text((40 * S, ny * S), note, font=font, fill=fill, anchor="ld")
 
 
-def _draw_frame_text(draw, w, h, stroke_rgb, op, params, font_dir):
+def _draw_frame_text(draw, w, h, stroke_rgb, op, params, font_dir, S):
     size = params["frame_text_size"]
     inset = 40
-    font = _load_font(font_dir, size * SS)
+    font = _load_font(font_dir, size * S)
     fill = _rgba(stroke_rgb, op)
     corners = (
         (params["frame_text_tl"], (inset, inset), "la"),
@@ -471,7 +471,7 @@ def _draw_frame_text(draw, w, h, stroke_rgb, op, params, font_dir):
     for text, pos, anchor in corners:
         if not text:
             continue
-        draw.text((pos[0] * SS, pos[1] * SS), text, font=font, fill=fill, anchor=anchor)
+        draw.text((pos[0] * S, pos[1] * S), text, font=font, fill=fill, anchor=anchor)
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +479,7 @@ def _draw_frame_text(draw, w, h, stroke_rgb, op, params, font_dir):
 # ---------------------------------------------------------------------------
 
 def render_frame_topographic(fitted01, w, h, palette, params, elements, texture01, include_image, font_dir,
-                             cache=None):
+                             cache=None, unit=1.0):
     """
     fitted01: (h,w,3) float 0-1 cover-fitted source.
     palette: (bg_rgb, stroke_rgb) uint8 tuples.
@@ -491,12 +491,22 @@ def render_frame_topographic(fitted01, w, h, palette, params, elements, texture0
       frame; the band raster and the resolved vector layer depend on the
       elements only (never on the photo), so the second pass reuses them
       bitwise instead of redrawing.
+    unit: canvas px per layout unit (the node's reference_size lock). Every
+      element coordinate and every px-valued param is in LAYOUT units; the
+      vector layer is drawn at S = SS * unit layer px per unit, so the whole
+      sheet (strokes, fonts, insets, marginalia) scales as one. unit == 1.0
+      is the literal-pixel path, bitwise the pre-lock render. `zones` alone
+      arrive in canvas px (the mosaic is a raster step on the real canvas).
     Returns (uint8 (h,w,3) composite, float32 (h,w) overlay_alpha).
     """
     bg_rgb, stroke_rgb = palette
     op = float(params["overlay_opacity"])
     if cache is None:
         cache = {}
+    unit = float(unit)
+    locked = unit != 1.0
+    S = SS * unit if locked else SS            # layer px per layout unit
+    wu, hu = (w / unit, h / unit) if locked else (w, h)   # canvas in layout units
 
     canvas = np.empty((h, w, 3), dtype=np.float64)
     canvas[:, :, 0] = bg_rgb[0] / 255.0
@@ -514,9 +524,13 @@ def render_frame_topographic(fitted01, w, h, palette, params, elements, texture0
     zones = elements.get("zones") or []
     pixel_size = int(params.get("pixel_size", 1))
     if pixel_size > 1 and zones:
-        canvas = overlay_render.pixelate_canvas(canvas, w, h, zones, pixel_size, params["zone_size"],
+        zone_size, zlabel = params["zone_size"], params["label_size"]
+        if locked:
+            pixel_size = max(1, int(round(pixel_size * unit)))
+            zone_size, zlabel = zone_size * unit, zlabel * unit
+        canvas = overlay_render.pixelate_canvas(canvas, w, h, zones, pixel_size, zone_size,
                                                 params["pixel_stroke"], stroke_rgb, op,
-                                                params["label_size"], font_dir)
+                                                zlabel, font_dir, unit=unit)
 
     # 3. hypsometric band raster
     if "alpha_band" not in cache:
@@ -537,20 +551,20 @@ def render_frame_topographic(fitted01, w, h, palette, params, elements, texture0
         draw_a = ImageDraw.Draw(layer_a, "RGBA")
 
         xs, ys = elements["grid"]
-        _draw_grid(draw_a, w, h, xs, ys, params["grid"], stroke_rgb, op, params["grid_weight"])
-        _draw_contours(draw_a, layer_a, elements["contours"], stroke_rgb, op, params, font_dir)
-        _draw_ticks(draw_a, elements["hachures"], stroke_rgb, op, params["contour_weight"])
-        _draw_index_contours(draw_a, layer_a, elements["contours"], stroke_rgb, op, params, font_dir)
-        _draw_arrows(draw_a, elements["arrows"], stroke_rgb, op, params["contour_weight"])
-        _draw_spots(draw_a, elements["spots"], stroke_rgb, op, params, font_dir)
-        _draw_benchmarks(draw_a, elements["benchmarks"], stroke_rgb, op, params, font_dir)
-        _draw_campsites(layer_a, elements.get("campsites") or [], stroke_rgb, bg_rgb, op, params)
-        _draw_annotations(draw_a, w, elements["annotations"], stroke_rgb, op, params, font_dir)
+        _draw_grid(draw_a, wu, hu, xs, ys, params["grid"], stroke_rgb, op, params["grid_weight"], S)
+        _draw_contours(draw_a, layer_a, elements["contours"], stroke_rgb, op, params, font_dir, S)
+        _draw_ticks(draw_a, elements["hachures"], stroke_rgb, op, params["contour_weight"], S)
+        _draw_index_contours(draw_a, layer_a, elements["contours"], stroke_rgb, op, params, font_dir, S)
+        _draw_arrows(draw_a, elements["arrows"], stroke_rgb, op, params["contour_weight"], S)
+        _draw_spots(draw_a, elements["spots"], stroke_rgb, op, params, font_dir, S)
+        _draw_benchmarks(draw_a, elements["benchmarks"], stroke_rgb, op, params, font_dir, S)
+        _draw_campsites(layer_a, elements.get("campsites") or [], stroke_rgb, bg_rgb, op, params, S)
+        _draw_annotations(draw_a, wu, elements["annotations"], stroke_rgb, op, params, font_dir, S)
         if params["grid"] != "off" and params["grid_labels"]:
-            _draw_grid_labels(layer_a, draw_a, w, h, xs, ys, stroke_rgb, op, params["label_size"],
-                              params["map_scale"], font_dir)
-        _draw_marginalia(draw_a, w, h, stroke_rgb, op, params, elements, font_dir)
-        _draw_frame_text(draw_a, w, h, stroke_rgb, op, params, font_dir)
+            _draw_grid_labels(layer_a, draw_a, wu, hu, xs, ys, stroke_rgb, op, params["label_size"],
+                              params["map_scale"], font_dir, S)
+        _draw_marginalia(draw_a, wu, hu, stroke_rgb, op, params, elements, font_dir, S)
+        _draw_frame_text(draw_a, wu, hu, stroke_rgb, op, params, font_dir, S)
         cache["pm_a"], cache["alpha_a"] = _resolve_overlay(layer_a, w, h)
     pm_a, alpha_a = cache["pm_a"], cache["alpha_a"]
     canvas = canvas * (1.0 - alpha_a[..., None]) + pm_a

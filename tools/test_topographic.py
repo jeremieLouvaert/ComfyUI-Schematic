@@ -37,6 +37,11 @@ Items:
      (1,H,W,1) mask accepted; 4x4 mask -> "not a plausible mask" note.
 10.  Flat field: no crash, "contour-free" console note, grid+marginalia still draw.
 11.  Perf print (soft, no gate): default 1600x893 hero render time.
+13.  reference_size lock (spec section 11; written WITH the feature, not blind):
+     off / unit 1.0 bitwise the unlocked render; a 2x canvas under the lock keeps
+     every spot height, benchmark and campsite exactly, the contour length within
+     1 %, the overlay alpha close to the reference; typed zones scale; a
+     non-integer unit renders. Each with the unlocked 2x render as the control.
 """
 import contextlib
 import io
@@ -959,6 +964,125 @@ check("mark: stripe centroid is stroke colour", _near(ov_mark[mark_stripe], STRO
 check("mark: no disc and no ring (alpha 0 below the logo and on the rim)",
       al_mark[below] < 0.01 and al_mark[ring_pt] < 0.01, f"a={al_mark[below]}, {al_mark[ring_pt]}")
 control("badge: the same two points are opaque", al_badge[below] > 0.99 and al_badge[ring_pt] > 0.99)
+
+
+# ===========================================================================
+print("\n[13] reference_size lock: same sheet at any canvas size")
+
+_rs13 = np.random.RandomState(13)
+_low13 = _rs13.rand(18, 32, 3).astype(np.float32)
+_pil13 = Image.fromarray((_low13 * 255).astype(np.uint8)).resize((1024, 576), Image.BICUBIC)
+img13_2x = torch.from_numpy((np.asarray(_pil13).astype(np.float32) / 255.0)[None, ...])
+img13_1x = torch.from_numpy(
+    (np.asarray(_pil13.resize((512, 288), Image.LANCZOS)).astype(np.float32) / 255.0)[None, ...])
+NODE13 = SchematicTopographic()
+# sized for a 512 canvas so the sheet is busy enough to measure
+p13 = {**DEFAULTS, "texture_opacity": 0.0, "terrain_scale": 200, "smoothing": 5.0, "label_spacing": 160,
+       "spot_min_distance": 60, "grid_spacing": 100, "campsites": True, "campsite_count": 5,
+       "slope_arrows": True, "hachures": "all"}
+p13.pop("reference_size", None)
+_SPY13 = ("spot_heights", "benchmarks", "campsites", "slope_arrows", "build_contours")
+
+
+def _run13(img, **over):
+    """execute + the geometry the node handed the renderer (layout units)."""
+    cap = {}
+    orig = {n: getattr(_node_topo, n) for n in _SPY13}
+
+    def mk(f, key):
+        def g(*a, **k):
+            r = f(*a, **k)
+            cap[key] = r
+            return r
+        return g
+
+    for n in _SPY13:
+        setattr(_node_topo, n, mk(orig[n], n))
+    try:
+        out = NODE13.execute(image=img, **{**p13, **over})
+    finally:
+        for n in _SPY13:
+            setattr(_node_topo, n, orig[n])
+    return out, cap
+
+
+def _contour_len13(cap):
+    return sum(topographic.polyline_length(pts, closed)
+               for lev in cap["build_contours"] for (pts, closed) in lev["lines"])
+
+
+def _down2(a):
+    h, w = a.shape[0] // 2, a.shape[1] // 2
+    return a[:h * 2, :w * 2].reshape(h, 2, w, 2).mean(axis=(1, 3))
+
+
+with contextlib.redirect_stdout(io.StringIO()):
+    o_omit, g_ref = _run13(img13_1x)                          # kwarg absent (pre-lock workflows)
+    o_off, _ = _run13(img13_1x, reference_size=0)
+    o_one, _ = _run13(img13_1x, reference_size=512)           # unit == 1.0
+    o_half, _ = _run13(img13_1x, reference_size=256)          # unit == 2.0 on the same canvas
+    o_lock, g_lock = _run13(img13_2x, reference_size=512)     # the lock: 2x canvas, same sheet
+    o_free, g_free = _run13(img13_2x, reference_size=0)       # no lock: 2x canvas, literal px
+    o_odd, _ = _run13(img13_2x[:, :500, :900, :], reference_size=640)   # unit 1.40625
+
+check("reference_size=0 is bitwise the render without the kwarg",
+      all(torch.equal(o_omit[k], o_off[k]) for k in range(3)))
+check("reference_size == long side (unit 1.0) is bitwise the unlocked render",
+      all(torch.equal(o_off[k], o_one[k]) for k in range(3)))
+control("identity predicate rejects reference_size = half the long side",
+        not torch.equal(o_off[1], o_half[1]))
+
+for key in ("spot_heights", "benchmarks", "campsites"):
+    check(f"lock: {key} identical to the reference render ({len(g_ref[key])} sites)",
+          len(g_ref[key]) > 0 and g_lock[key] == g_ref[key])
+check("lock: slope arrows identical to the reference render",
+      len(g_ref["slope_arrows"]) > 0 and g_lock["slope_arrows"] == g_ref["slope_arrows"])
+control("placement predicate rejects the unlocked 2x render",
+        g_free["spot_heights"] != g_ref["spot_heights"] and g_free["benchmarks"] != g_ref["benchmarks"])
+
+len_ref, len_lock, len_free = _contour_len13(g_ref), _contour_len13(g_lock), _contour_len13(g_free)
+check("lock: total contour length within 1 % of the reference (layout units)",
+      abs(len_lock / len_ref - 1.0) < 0.01, f"{len_lock:.0f} vs {len_ref:.0f}")
+control("length predicate rejects the unlocked 2x render",
+        abs(len_free / len_ref - 1.0) >= 0.01, f"{len_free:.0f} vs {len_ref:.0f}")
+
+def _ink13(alpha, cell):
+    """Ink density per cell x cell block: where the sheet puts its marks,
+    blind to the sub-pixel anti-aliasing a finer raster legitimately changes."""
+    h, w = alpha.shape[0] // cell, alpha.shape[1] // cell
+    return alpha[:h * cell, :w * cell].reshape(h, cell, w, cell).mean(axis=(1, 3))
+
+
+ink_ref = _ink13(o_omit[2][0].numpy(), 16)
+d_lock = float(np.abs(_ink13(o_lock[2][0].numpy(), 32) - ink_ref).mean())
+d_free = float(np.abs(_ink13(o_free[2][0].numpy(), 32) - ink_ref).mean())
+print(f"  ink density per 16-unit cell, mean {ink_ref.mean():.4f}; mean|d| lock {d_lock:.4f}, "
+      f"unlocked {d_free:.4f}")
+check("lock: ink density map within 15 % of the reference's mean density",
+      d_lock < 0.15 * float(ink_ref.mean()), f"{d_lock:.4f} vs mean {ink_ref.mean():.4f}")
+control("ink predicate rejects the unlocked 2x render", d_free >= 0.15 * float(ink_ref.mean()),
+        f"{d_free:.4f}")
+check("lock: 2x canvas keeps its own size", tuple(o_lock[0].shape) == (1, 576, 1024, 3))
+check("lock: non-integer unit (900x500 at reference 640) renders at canvas size",
+      tuple(o_odd[0].shape) == (1, 500, 900, 3) and bool(torch.isfinite(o_odd[0]).all()))
+
+# typed pixelate zones are reference px: zone "100,100" lands at canvas (200,200)
+pz = {"pixelate_zones": "100,100", "zone_size": 20, "pixel_size": 8, "overlay_opacity": 0.0,
+      "image_opacity": 0.9, "campsites": False}  # 0.9: 1.0 would take the passthrough early-out
+with contextlib.redirect_stdout(io.StringIO()):
+    z_lock = _run13(img13_2x, reference_size=512, **pz)[0][0][0].numpy()
+    z_none = _run13(img13_2x, reference_size=512, **{**pz, "pixelate_zones": ""})[0][0][0].numpy()
+    z_free = _run13(img13_2x, reference_size=0, **pz)[0][0][0].numpy()
+    z_free0 = _run13(img13_2x, reference_size=0, **{**pz, "pixelate_zones": ""})[0][0][0].numpy()
+dz = np.abs(z_lock - z_none).sum(axis=2)
+ys13, xs13 = np.nonzero(dz > 0)
+check("lock: typed zone scales with the canvas (mosaic spans 160..240 px, both axes)",
+      ys13.size > 0 and ys13.min() >= 160 and ys13.max() <= 240 and xs13.min() >= 160 and xs13.max() <= 240
+      and ys13.max() - ys13.min() >= 60,
+      f"y {ys13.min() if ys13.size else None}..{ys13.max() if ys13.size else None}")
+dzf = np.abs(z_free - z_free0).sum(axis=2)
+control("zone predicate rejects the unlocked render (mosaic stays at 80..120 px)",
+        float(dzf[160:241, 160:241].sum()) == 0.0 and float(dzf[80:121, 80:121].sum()) > 0.0)
 
 
 # ===========================================================================

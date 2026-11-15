@@ -163,9 +163,13 @@ def procedural_field(w, h, seed, scale, octaves, roughness, stretch, angle_deg):
     return out
 
 
-def build_height(fitted01, source, smoothing, mask01=None, terrain=None):
+def build_height(fitted01, source, smoothing, mask01=None, terrain=None, unit=1.0):
     """
     Spec section 3 steps 1-3. fitted01: (H,W,3) float 0-1 cover-fitted source.
+    unit: canvas px per layout unit (the node's reference_size lock, spec
+      section 11). terrain scale, smoothing sigma and the detail window are
+      given in layout units and multiplied by unit here, so the SAME landform
+      is sampled on a finer grid. 1.0 = literal pixels, bitwise the old path.
     mask01: optional canvas-sized (H,W) float64 in [0,1] that REPLACES source.
     terrain: dict(seed, scale, octaves, roughness, stretch, angle) used when
       source == "procedural" (spec v2; the default source - the terrain is
@@ -177,19 +181,19 @@ def build_height(fitted01, source, smoothing, mask01=None, terrain=None):
     elif source == "procedural":
         hh, ww = np.asarray(fitted01).shape[0], np.asarray(fitted01).shape[1]
         t = terrain or {}
-        s = procedural_field(ww, hh, t.get("seed", 0), t.get("scale", 420.0), t.get("octaves", 3),
+        s = procedural_field(ww, hh, t.get("seed", 0), t.get("scale", 420.0) * unit, t.get("octaves", 3),
                              t.get("roughness", 0.45), t.get("stretch", 1.6), t.get("angle", 30.0))
     else:
         lum = _luma(fitted01)
         if source == "darkness":
             s = 1.0 - lum
         elif source == "detail":
-            sd = _local_std_box(lum, 15)
+            sd = _local_std_box(lum, 2 * int(round(7 * unit)) + 1)
             mx = float(sd.max()) if sd.size else 0.0
             s = sd / mx if mx > 0.0 else np.zeros_like(sd)
         else:
             s = lum
-    s = gaussian_blur(s, float(smoothing))
+    s = gaussian_blur(s, float(smoothing) * unit)
     lo = float(s.min())
     hi = float(s.max())
     if hi - lo <= 1e-9:

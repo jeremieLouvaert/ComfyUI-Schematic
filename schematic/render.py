@@ -123,8 +123,12 @@ def _draw_frame_text(draw, w, h, stroke_rgb, op, params, font_dir):
 # Step 3: pixelate zones (raster, 1x)
 # ---------------------------------------------------------------------------
 
-def pixelate_canvas(canvas01, w, h, zones, pixel_size, zone_size, pixel_stroke, stroke_rgb, op, label_size, font_dir):
-    """Mosaic + optional outline/label. Runs on the CURRENT canvas (bg+image only). Spec section 8."""
+def pixelate_canvas(canvas01, w, h, zones, pixel_size, zone_size, pixel_stroke, stroke_rgb, op, label_size, font_dir,
+                    unit=1.0):
+    """Mosaic + optional outline/label. Runs on the CURRENT canvas (bg+image only). Spec section 8.
+    unit: canvas px per layout unit (Topographic's reference_size lock). The
+    caller pre-scales zones and sizes; unit only keeps the outline weight and
+    the printed coordinates in layout units. 1.0 = the literal-pixel path."""
     canvas = canvas01.copy()
     rects = []
     for (cx, cy) in zones:
@@ -151,8 +155,9 @@ def pixelate_canvas(canvas01, w, h, zones, pixel_size, zone_size, pixel_stroke, 
     font = _load_font(font_dir, label_size)
     for (cx, cy, x0, y0, x1, y1) in rects:
         if pixel_stroke:
-            draw.rectangle([x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], outline=_rgba(stroke_rgb, 0.4), width=1)
-        label = f"{round(cx)},{round(cy)}"
+            draw.rectangle([x0, y0, max(x0, x1 - 1), max(y0, y1 - 1)], outline=_rgba(stroke_rgb, 0.4),
+                           width=max(1, int(round(unit))))
+        label = f"{round(cx / unit)},{round(cy / unit)}"
         draw.text(((x0 + x1) / 2.0, (y0 + y1) / 2.0), label, font=font, fill=_rgba(stroke_rgb, op), anchor="mm")
 
     return np.asarray(img).astype(np.float64) / 255.0
